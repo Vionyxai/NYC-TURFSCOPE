@@ -181,6 +181,7 @@
             <span class="badge" style="border-color:${utColor(p.utility)};color:${utColor(p.utility)}">${esc(utLabel(p.utility))}</span>
             ${p.utility_split ? '<span class="badge">split utility</span>' : ''}
             ${p.dac ? '<span class="badge">DAC</span>' : ''}
+            ${p.estimated_from ? '<span class="badge">estimated</span>' : ''}
           </div>
         </div>
       </div>
@@ -196,6 +197,7 @@
         ${Object.keys(w).map((k) => `
           <div class="b"><span>${k}</span><div class="track"><div class="fill" style="width:${w[k] ? ((parts[k] || 0) / w[k]) * 100 : 0}%"></div></div><span>${parts[k] ?? 0}</span></div>`).join('')}
       </div>
+      ${p.estimated_from ? `<div class="meta">No Census survey data for this tract — numbers estimated from nearby tract ${esc(p.estimated_from.slice(5))}.</div>` : ''}
       ${p.gaps && p.gaps.length ? `<div class="meta">Missing data: ${esc(p.gaps.join(', '))}</div>` : ''}
       ${hasList
         ? `<button class="btn" id="walkBtn">Walk list · ${hasList} homes</button>`

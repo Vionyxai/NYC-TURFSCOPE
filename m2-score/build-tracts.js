@@ -44,9 +44,28 @@ for (const l of lots) {
   lotAgg.set(l.tract, a);
 }
 
+// Internal point + land area for every polygon that has ACS data, so tracts the ACS
+// doesn't publish (a handful of 2020 tract splits in Suffolk) can borrow from the
+// nearest one in the same county instead of vanishing from the map.
+const acsPoints = geo.features
+  .map((f) => f.properties || {})
+  .filter((p) => acsBy.has(String(p.GEOID)))
+  .map((p) => ({ geoid: String(p.GEOID), lon: Number(p.INTPTLON), lat: Number(p.INTPTLAT), land: Number(p.AREALAND) || 0 }));
+function nearestAcs(geoid, lon, lat) {
+  let best = null, bestD = Infinity;
+  const k = Math.cos((lat * Math.PI) / 180);
+  for (const q of acsPoints) {
+    if (q.geoid.slice(2, 5) !== geoid.slice(2, 5)) continue;
+    const d = ((q.lon - lon) * k) ** 2 + (q.lat - lat) ** 2;
+    if (d < bestD) { bestD = d; best = q; }
+  }
+  return best;
+}
+
 const features = [];
 let dropped = { county: 0, boundary: 0, small: 0, noacs: 0, noutil: 0 };
 const droppedIds = { boundary: [], noacs: [] };
+const borrowed = [];
 
 for (const f of geo.features) {
   const p = f.properties || {};
@@ -58,10 +77,20 @@ for (const f of geo.features) {
   const pt = [Number(p.INTPTLON), Number(p.INTPTLAT)];
   if (!pointInFeatureCollection(pt, boundary)) { dropped.boundary++; droppedIds.boundary.push(geoid); continue; }
 
-  const a = acsBy.get(geoid);
-  if (!a) { dropped.noacs++; droppedIds.noacs.push(`${geoid} (land ${p.AREALAND ?? '?'} m²)`); continue; }
+  let a = acsBy.get(geoid);
+  let estimatedFrom = null;
+  let landRatio = 1;
+  if (!a) {
+    const near = nearestAcs(geoid, pt[0], pt[1]);
+    if (!near) { dropped.noacs++; droppedIds.noacs.push(geoid); continue; }
+    a = acsBy.get(near.geoid);
+    estimatedFrom = near.geoid;
+    landRatio = near.land > 0 && Number(p.AREALAND) > 0 ? Number(p.AREALAND) / near.land : 1;
+    borrowed.push(`${geoid}←${near.geoid}`);
+  }
 
   const m = tractMetrics(a.v, acs.pre1980_codes, scoring);
+  if (estimatedFrom) m.homes_est = Math.round(m.homes_est * landRatio);
   const agg = lotAgg.get(geoid);
 
   // Homes: real building counts from PLUTO in NYC, ACS estimate elsewhere.
@@ -94,6 +123,7 @@ for (const f of geo.features) {
       utility_split,
       homes: m.homes,
       homes_source: usePluto ? 'pluto' : 'acs_est',
+      estimated_from: estimatedFrom,
       multifamily_5plus_lots: usePluto ? agg.mf : null,
       median_income: m.median_income,
       income_band: incomeBand(m.median_income, scoring.income_bands),
@@ -129,11 +159,13 @@ writeJSON(out('summary.json'), {
   counties: [...active.values()].map((c) => c.name),
   utilities: Object.fromEntries(Object.entries(util.utilities).map(([k, v]) => [k, { ...v, ...(byUtil[k] || { tracts: 0, homes: 0 }) }])),
   tracts: features.length,
+  estimated_from_neighbor: borrowed.length,
   dropped,
 });
 
 const geoIds = new Set(geo.features.map((f) => String(f.properties?.GEOID)));
 const acsOnly = acs.rows.filter((r) => active.has(r.geoid.slice(2, 5)) && !geoIds.has(r.geoid));
 if (acsOnly.length) warn(`ACS tracts with no polygon: ${acsOnly.map((r) => `${r.geoid} (${r.name})`).join('; ')}`);
+if (borrowed.length) warn(`No ACS data for ${borrowed.length} tracts — estimated from nearest tract: ${borrowed.join(', ')}`);
 for (const [k, ids] of Object.entries(droppedIds)) if (ids.length) log(`Dropped (${k}): ${ids.join(', ')}`);
 log(`Scored ${features.length} tracts →`, JSON.stringify(byUtil), '· dropped', JSON.stringify(dropped));

@@ -104,11 +104,11 @@ fs.mkdirSync(RAW, { recursive: true });
 
 const sq = (lon, lat, d = 0.01) => ({ type: 'Polygon', coordinates: [[[lon - d, lat - d], [lon + d, lat - d], [lon + d, lat + d], [lon - d, lat + d], [lon - d, lat - d]]] });
 const tract = (geoid, lon, lat) => ({ type: 'Feature', geometry: sq(lon, lat), properties: { GEOID: geoid, INTPTLON: String(lon), INTPTLAT: `+${lat}` } });
-const T = { queens: '36081000100', rock: '36081000200', nassau: '36059000300', suffolk: '36103000600', outside: '36103000400', manhattan: '36061000500' };
+const T = { queens: '36081000100', rock: '36081000200', nassau: '36059000300', suffolk: '36103000600', suffolkSplit: '36103000601', outside: '36103000400', manhattan: '36061000500' };
 
 fs.writeFileSync(path.join(RAW, 'tracts_geo.json'), JSON.stringify({ type: 'FeatureCollection', features: [
   tract(T.queens, -73.80, 40.72), tract(T.rock, -73.80, 40.59), tract(T.nassau, -73.60, 40.70),
-  tract(T.suffolk, -71.95, 41.03), tract(T.outside, -72.00, 41.27), tract(T.manhattan, -73.98, 40.76),
+  tract(T.suffolk, -71.95, 41.03), tract(T.suffolkSplit, -71.93, 41.03), tract(T.outside, -72.00, 41.27), tract(T.manhattan, -73.98, 40.76),
 ] }));
 
 const acsV = (o) => ({
@@ -119,7 +119,7 @@ const acsV = (o) => ({
 });
 fs.writeFileSync(path.join(RAW, 'acs_tracts.json'), JSON.stringify({
   year: 2024, pre1980_codes: ['B25034_007E', 'B25034_011E'],
-  rows: Object.values(T).map((g) => ({ geoid: g, name: g, v: acsV(g === T.nassau ? { B19013_001E: 140000 } : {}) })),
+  rows: Object.values(T).filter((g) => g !== T.suffolkSplit).map((g) => ({ geoid: g, name: g, v: acsV(g === T.nassau ? { B19013_001E: 140000 } : {}) })),
 }));
 
 const lot = (tract, address, zip, units, year, lon, lat) => ({ bbl: address, boro: 'QN', block: 1, address, zip, cls: units <= 1 ? 'A1' : units === 2 ? 'B1' : 'C0', units, year, lat, lon, tract });
@@ -141,7 +141,7 @@ const fc = JSON.parse(fs.readFileSync(path.join(OUT, 'tracts.geojson'), 'utf8'))
 const by = Object.fromEntries(fc.features.map((f) => [f.properties.geoid, f.properties]));
 
 t('only active counties inside the boundary are kept', () => {
-  assert.deepEqual(Object.keys(by).sort(), [T.queens, T.rock, T.nassau, T.suffolk].sort());
+  assert.deepEqual(Object.keys(by).sort(), [T.queens, T.rock, T.nassau, T.suffolk, T.suffolkSplit].sort());
 });
 t('utility split: Queens=Con Ed, Rockaway/Nassau/Suffolk=PSEG LI', () => {
   assert.equal(by[T.suffolk].utility, 'psegli');
@@ -166,6 +166,13 @@ t('scores are 0–100 and sorted', () => {
   s.forEach((x) => assert.ok(x >= 0 && x <= 100));
   assert.deepEqual(s, [...s].sort((a, b) => b - a));
   assert.equal(by[T.nassau].income_band, '100–150k');
+});
+t('tract with no ACS data borrows from the nearest tract in the same county', () => {
+  const s = by[T.suffolkSplit];
+  assert.equal(s.estimated_from, T.suffolk);
+  assert.equal(s.homes, by[T.suffolk].homes); // same land area in the fixture
+  assert.equal(s.median_income, by[T.suffolk].median_income);
+  assert.equal(by[T.suffolk].estimated_from, null);
 });
 t('summary carries scoring weights for the map card', () => {
   const summary = JSON.parse(fs.readFileSync(path.join(OUT, 'summary.json'), 'utf8'));
