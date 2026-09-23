@@ -10,11 +10,12 @@ import { lotScore, lotUtility } from '../m2-score/score.js';
 // Walk order: street → one side of the street → house number.
 export function addrKey(address) {
   const a = String(address || '').trim().toUpperCase().replace(/\s+/g, ' ');
-  const m = a.match(/^(\d+)(?:-(\d+))?[A-Z]?\s+(.+)$/);
+  // Optional " 1/2" after the number ("111-30 1/2 145 STREET") belongs to the house number, not the street.
+  const m = a.match(/^(\d+)(?:-(\d+))?[A-Z]?(\s+1\/2)?\s+(.+)$/);
   if (!m) return { street: a, side: 0, num: 0 };
   const hi = Number(m[1]);
   const lo = m[2] != null ? Number(m[2]) : null;
-  return { street: m[3], side: (lo ?? hi) % 2, num: hi * 10000 + (lo ?? 0) };
+  return { street: m[4], side: (lo ?? hi) % 2, num: hi * 10000 + (lo ?? 0) + (m[3] ? 0.5 : 0) };
 }
 
 export function compareLots(x, y) {

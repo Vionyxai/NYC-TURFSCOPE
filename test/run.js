@@ -71,6 +71,7 @@ t('lot score bounds', () => {
 });
 t('Queens address walk order', () => {
   assert.deepEqual(addrKey('123-45 88 AVENUE'), { street: '88 AVENUE', side: 1, num: 1230045 });
+  assert.deepEqual(addrKey('111-30 1/2 145 STREET'), { street: '145 STREET', side: 0, num: 1110030.5 });
   const rows = ['123-46 88 AVENUE', '123-45 88 AVENUE', '123-47 88 AVENUE', '10 ARCH ST'].map((address) => ({ address }));
   assert.deepEqual(rows.sort(compareLots).map((r) => r.address), ['123-46 88 AVENUE', '123-45 88 AVENUE', '123-47 88 AVENUE', '10 ARCH ST']);
 });
