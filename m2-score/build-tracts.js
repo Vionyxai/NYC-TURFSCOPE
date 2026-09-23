@@ -46,6 +46,7 @@ for (const l of lots) {
 
 const features = [];
 let dropped = { county: 0, boundary: 0, small: 0, noacs: 0, noutil: 0 };
+const droppedIds = { boundary: [], noacs: [] };
 
 for (const f of geo.features) {
   const p = f.properties || {};
@@ -55,10 +56,10 @@ for (const f of geo.features) {
   if (!c) { dropped.county++; continue; }
 
   const pt = [Number(p.INTPTLON), Number(p.INTPTLAT)];
-  if (!pointInFeatureCollection(pt, boundary)) { dropped.boundary++; continue; }
+  if (!pointInFeatureCollection(pt, boundary)) { dropped.boundary++; droppedIds.boundary.push(geoid); continue; }
 
   const a = acsBy.get(geoid);
-  if (!a) { dropped.noacs++; continue; }
+  if (!a) { dropped.noacs++; droppedIds.noacs.push(`${geoid} (land ${p.AREALAND ?? '?'} m²)`); continue; }
 
   const m = tractMetrics(a.v, acs.pre1980_codes, scoring);
   const agg = lotAgg.get(geoid);
@@ -131,4 +132,5 @@ writeJSON(out('summary.json'), {
   dropped,
 });
 
+for (const [k, ids] of Object.entries(droppedIds)) if (ids.length) log(`Dropped (${k}): ${ids.join(', ')}`);
 log(`Scored ${features.length} tracts →`, JSON.stringify(byUtil), '· dropped', JSON.stringify(dropped));
