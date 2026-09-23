@@ -17,14 +17,6 @@ jobs:
         with:
           node-version-file: .nvmrc
       - run: npm test
-      - name: TEMP inspect business + PLUTO fields
-        run: |
-          echo "== DCWP one row"; curl -s 'https://data.cityofnewyork.us/resource/w7w3-xahh.json?$limit=1' | head -c 2500; echo
-          echo "== DCWP Queens active business count"; curl -s 'https://data.cityofnewyork.us/resource/w7w3-xahh.json?$select=count(*)&$where=address_borough=%27Queens%27' ; echo
-          echo "== DCWP distinct license_type/status"; curl -s 'https://data.cityofnewyork.us/resource/w7w3-xahh.json?$select=license_type,license_status,count(*)&$group=license_type,license_status' ; echo
-          echo "== DCWP top industries Queens"; curl -s 'https://data.cityofnewyork.us/resource/w7w3-xahh.json?$select=business_category,count(*)&$group=business_category&$order=count(*)%20desc&$limit=15' ; echo
-          echo "== PLUTO mixed fields"; curl -s 'https://data.cityofnewyork.us/resource/64uk-42ks.json?$select=bbl,bldgclass,comarea,officearea,retailarea,landuse,unitsres&$where=borough=%27QN%27%20AND%20bldgclass%20like%20%27S%25%27&$limit=3' ; echo
-          exit 1
       - name: Run pipeline
         run: npm run pipeline
         env:
