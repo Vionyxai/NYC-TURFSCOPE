@@ -12,6 +12,8 @@ npm run dev        # open http://localhost:3000
 
 Requires Node 18.17+. No npm install needed — there are zero dependencies.
 
+The pipeline needs a free Census API key (https://api.census.gov/data/key_signup.html). Put it in `.env` as `CENSUS_API_KEY` for local runs, and add it as a repository secret named `CENSUS_API_KEY` (Settings → Secrets and variables → Actions) for the GitHub refresh.
+
 ## Deploy
 
 Push to GitHub, import the repo in Vercel, and deploy. `vercel.json` serves `m3-map/` as-is.

@@ -35,6 +35,18 @@ export function pre1980Codes(groupVariables) {
   return codes.sort();
 }
 
+// Census answers a missing/bad key with an HTML page. Turn that into a clear instruction.
+async function censusJSON(url) {
+  try {
+    return await fetchJSON(url);
+  } catch (e) {
+    if (/Missing Key|Invalid Key/i.test(e.message)) {
+      throw new Error('Census API key missing or invalid. Get a free key at https://api.census.gov/data/key_signup.html and set CENSUS_API_KEY (in .env locally, or as a GitHub Actions secret).');
+    }
+    throw e;
+  }
+}
+
 function rowsToObjects(arr) {
   const [header, ...rows] = arr;
   return rows.map((r) => Object.fromEntries(header.map((h, i) => [h, r[i]])));
@@ -68,7 +80,7 @@ export async function runACS() {
   for (const c of activeCounties()) {
     for (const vars of [MAIN_VARS, ageVars]) {
       const url = `${src.base}/${year}/acs/acs5?get=NAME,${vars.join(',')}&for=tract:*&in=state:${state_fips}&in=county:${c.fips}${key}`;
-      const data = rowsToObjects(await fetchJSON(url));
+      const data = rowsToObjects(await censusJSON(url));
       for (const r of data) {
         const geoid = `${r.state}${r.county}${r.tract}`;
         const row = rows.get(geoid) || { geoid, name: r.NAME, v: {} };

@@ -15,7 +15,7 @@ npm run pipeline    # all three in order
 npm run dev         # serve the map at http://localhost:3000
 ```
 
-Optional keys go in `.env` (see `.env.example`). Everything runs without them, just slower. Node doesn't read `.env` on its own, so either export the variables in the shell or run with `node --env-file=.env` (Node 20.6+).
+Keys go in `.env` (see `.env.example`). `CENSUS_API_KEY` is required (the Census data API rejects keyless requests); `NYC_APP_TOKEN` is optional. Node doesn't read `.env` on its own, so either export the variables in the shell or run with `node --env-file=.env` (Node 20.6+).
 
 ## Rules
 

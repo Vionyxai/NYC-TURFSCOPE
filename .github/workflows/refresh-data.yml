@@ -12,8 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
       - run: npm test
@@ -27,7 +27,7 @@ jobs:
           cat m3-map/data/summary.json
           du -sh m3-map/data m3-map/data/walklists 2>/dev/null || true
       - name: Upload office CSV
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: walklists_all
           path: exports/walklists_all.csv
