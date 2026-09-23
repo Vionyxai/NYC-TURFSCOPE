@@ -17,9 +17,14 @@
   },
   "pluto": {
     "url": "https://data.cityofnewyork.us/resource/64uk-42ks.json",
-    "fields": ["bbl", "borough", "block", "lot", "address", "zipcode", "bldgclass", "unitsres", "yearbuilt", "latitude", "longitude", "bct2020", "bldgarea"],
+    "fields": ["bbl", "borough", "block", "lot", "address", "zipcode", "bldgclass", "unitsres", "yearbuilt", "latitude", "longitude", "bct2020", "bldgarea", "comarea"],
     "page_size": 50000,
     "verify": true
+  },
+  "business_licenses": {
+    "url": "https://data.cityofnewyork.us/resource/w7w3-xahh.json",
+    "note": "NYC DCWP licensed businesses. Only active Premises licenses (a business at a location) are used, never Individual licenses, and only the business category is kept: no names, phone numbers or license numbers.",
+    "page_size": 50000
   },
   "dac": {
     "url": "https://data.ny.gov/resource/2e6c-s6fp.json",

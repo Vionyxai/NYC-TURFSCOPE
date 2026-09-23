@@ -9,7 +9,7 @@ import { ROOT } from '../lib/util.js';
 import { pre1980Codes } from '../m1-ingest/acs.js';
 import { plutoTractGeoid } from '../m1-ingest/pluto.js';
 import { isDac, detectDacFields, parseRelationship } from '../m1-ingest/dac.js';
-import { incomeBand, dacFor2020, lotUtility, lotScore, ownerAgeShares, sizeBand } from '../m2-score/score.js';
+import { incomeBand, dacFor2020, lotUtility, lotScore, ownerAgeShares, sizeBand, homeAgeBand, lotBusiness } from '../m2-score/score.js';
 import { addrKey, compareLots } from '../m4-walklists/build.js';
 import { pointInFeatureCollection, shareInside } from '../lib/geo.js';
 
@@ -78,6 +78,22 @@ t('house size bands', () => {
   assert.equal(sizeBand(5, 'rooms', bands), 'small');
   assert.equal(sizeBand(7.5, 'rooms', bands), 'large');
   assert.equal(sizeBand(null, 'sqft', bands), null);
+});
+t('home age bands', () => {
+  const bands = readCfg('scoring.json').targeting.home_age_bands;
+  assert.equal(homeAgeBand(1925, bands), 'pre1940');
+  assert.equal(homeAgeBand(1939, bands), 'pre1940'); // ACS "1939 or earlier"
+  assert.equal(homeAgeBand(1979, bands), '1940_79');
+  assert.equal(homeAgeBand(1985, bands), '1980_99');
+  assert.equal(homeAgeBand(2012, bands), '2000p');
+  assert.equal(homeAgeBand(0, bands), null);
+});
+t('business at a home', () => {
+  assert.equal(lotBusiness({ cls: 'A1', comarea: 0 }, ['Home Improvement Contractor']), 'Home Improvement Contractor');
+  assert.equal(lotBusiness({ cls: 'A1' }, ['A', 'B', 'C']), 'A, B +1');
+  assert.equal(lotBusiness({ cls: 'S1', comarea: 0 }, null), 'Store/office on site');
+  assert.equal(lotBusiness({ cls: 'B2', comarea: 600 }, []), 'Store/office on site');
+  assert.equal(lotBusiness({ cls: 'A1', comarea: 0 }, undefined), null);
 });
 t('lot score bounds', () => {
   const c = readCfg('scoring.json').lot;
@@ -150,7 +166,9 @@ const lots = [];
 for (let i = 0; i < 30; i++) lots.push(lot(T.queens, `${100 + i} 88 AVENUE`, '11375', i % 3 === 0 ? 3 : 1, 1940, -73.80, 40.72));
 lots.push(lot(T.queens, '1 BIG TOWER', '11375', 40, 1965, -73.80, 40.72)); // 5+ units: counted, not listed
 for (let i = 0; i < 20; i++) lots.push(lot(T.rock, `${200 + i} BEACH 90 STREET`, '11693', 2, 1925, -73.80, 40.59));
+lots[1].cls = 'S1'; // one-family with a store
 fs.writeFileSync(path.join(RAW, 'pluto_lots.json'), JSON.stringify(lots));
+fs.writeFileSync(path.join(RAW, 'business_by_bbl.json'), JSON.stringify({ '103 88 AVENUE': ['Home Improvement Contractor'] }));
 // Villages with their own electric utility: one covers the whole Suffolk tract, one a quarter of Nassau's.
 const vbox = (x0, y0, x1, y1) => ({ type: 'Polygon', coordinates: [[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]] });
 fs.writeFileSync(path.join(RAW, 'muni_places.json'), JSON.stringify({ type: 'FeatureCollection', features: [
@@ -222,6 +240,17 @@ t('targeting: homeowner age, house size, turf-wide age average', () => {
   assert.deepEqual(summary.targeting.income_bands, ['<60k', '60–100k', '100–150k', '150k+']);
   assert.ok(summary.targeting.owner_age_avg['65p'] > 0 && summary.targeting.owner_age_avg['65p'] < 0.4);
 });
+t('home age, renters and home businesses on tracts', () => {
+  const q = by[T.queens];
+  assert.equal(q.year_built, 1940);          // median of the lots (PLUTO)
+  assert.equal(q.home_age_band, '1940_79');
+  assert.equal(q.renter, 0.3);
+  assert.equal(q.renter_heavy, false);
+  assert.equal(q.rental_unit_lots, 10);      // the 3-family lots
+  assert.equal(q.business_lots, 2);          // one licensed, one mixed-use class
+  assert.equal(by[T.nassau].year_built, 1955); // ACS median
+  assert.equal(by[T.nassau].rental_unit_lots, null);
+});
 t('summary carries scoring weights for the map card', () => {
   const summary = JSON.parse(fs.readFileSync(path.join(OUT, 'summary.json'), 'utf8'));
   assert.deepEqual(summary.weights, readCfg('scoring.json').weights);
@@ -232,6 +261,12 @@ t('walk lists: 1–4 units only, ordered, CSV written', () => {
   assert.ok(!q.some((r) => r.units >= 5));
   assert.equal(q[0].address, '100 88 AVENUE'); // even side first
   assert.equal(q[1].sqft, 1400);
+  assert.equal(q[0].rental, true);                         // 3-family
+  assert.equal(q[1].rental, false);
+  assert.equal(q.find((r) => r.address === '101 88 AVENUE').biz, 'Store/office on site');
+  assert.equal(q[1].biz, null);
+  assert.equal(q.find((r) => r.address === '103 88 AVENUE').biz, 'Home Improvement Contractor');
+  assert.equal(q[1].age, '1940_79');
   assert.equal(q[1].size, 'small');
   const idx = JSON.parse(fs.readFileSync(path.join(OUT, 'walklists', 'index.json'), 'utf8'));
   assert.equal(idx[T.rock], 20);

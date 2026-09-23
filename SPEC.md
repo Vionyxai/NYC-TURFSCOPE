@@ -36,13 +36,15 @@ Two files control scope:
 **Tract heat map** (`m3-map/`, mobile-first, deploys to Vercel as static files)
 - Fill color = TurfScore; border color = utility
 - Filters: utility, DAC only, minimum score; a "Best turf" ranked list
-- Target (rep picks any mix; none picked in a group = any): income band (tract median), homeowner age (tracts where owners in the picked ages — Under 45 / 45–64 / 65+, ACS B25007 — are more common than turf-wide), house size (Small / Medium / Large: median building sq ft of 1–4 family lots from PLUTO in NYC, ACS median rooms B25018 elsewhere). Bands live in `config/scoring.json → targeting`.
+- Target (rep picks any mix; none picked in a group = any): income band (tract median), home age (Before 1940 / 1940–79 / 1980–99 / 2000+: median year built of 1–4 family lots in NYC, ACS B25035 elsewhere; walk lists filter each house by its own year), homeowner age (rough estimate) (tracts where owners in the picked ages — Under 45 / 45–64 / 65+, ACS B25007 — are more common than turf-wide), house size (Small / Medium / Large: median building sq ft of 1–4 family lots from PLUTO in NYC, ACS median rooms B25018 elsewhere). Bands live in `config/scoring.json → targeting`.
 - Live location: the locate button follows your GPS position and shows the tract you're standing in (score, utility). The position stays on the phone; nothing is sent or stored.
+- Renters: every card shows owners / renters; tracts with ≥ 50% renter households get a renter-heavy badge. In NYC the card also counts 2–4 family homes (which have rental units) and homes with a business.
 - Tapping a tract opens a card: homes, median income plus band, median year built, % pre-1980, % owner-occupied, heating fuel mix, DAC, and the score breakdown
 
 **Walk lists** (NYC only in v1)
 - Every 1–4 unit lot in the tract with a lot score
 - Walking order: street, then one side of the street, then house number (handles Queens hyphenated addresses)
+- Each house is tagged "rental unit" when it's a 2–4 family (owner usually rents the other units) and with the business type when a business operates there: an active NYC DCWP premises license on the lot (category only, no names), or a store/office recorded in the building (PLUTO class S*, commercial floor area). Single-family rentals can't be told apart from public data.
 - On phone: list view, a map link per address, CSV download; distance to each home from your live location and a Nearest sort that re-sorts as you walk; the house size target filters lots by their own square footage
 - Office copy: `exports/walklists_all.csv`
 
@@ -60,6 +62,7 @@ Two files control scope:
 | Homeowner age | ACS 5-yr B25007 | Owner households by age of householder |
 | Rooms | ACS 5-yr B25018 | Median rooms; house size outside NYC |
 | DAC | data.ny.gov `2e6c-s6fp` (2010 tracts) | |
+| Home businesses | NYC DCWP licenses `w7w3-xahh` | Active Premises licenses only; category kept, nothing personal |
 | Tract crosswalk | Census `tab20_tract20_tract10_st36.txt` | |
 
 ## 4. Scoring

@@ -121,7 +121,8 @@
   <div class="row"><div class="title">Target</div><button class="chip" id="targetClear">Clear all</button></div>
   <div class="meta">Pick any mix. Nothing picked in a group means any.</div>
   <div class="group"><h4>Income (tract median)</h4><div class="row" id="tgIncome"></div></div>
-  <div class="group"><h4>Homeowner age — more than usual</h4><div class="row" id="tgAge"></div></div>
+  <div class="group"><h4>Home age (year built)</h4><div class="row" id="tgHome"></div></div>
+  <div class="group"><h4>Homeowner age (rough estimate) — more than usual</h4><div class="row" id="tgAge"></div></div>
   <div class="group"><h4>House size</h4><div class="row" id="tgSize"></div></div>
   <button class="btn" id="targetDone">Show tracts</button>
 </div>
@@ -152,7 +153,7 @@
   const pct = (x) => (x == null ? '—' : Math.round(x * 100) + '%');
   const money = (x) => (x == null ? '—' : '$' + Math.round(x / 1000) + 'k');
 
-  const state = { util: 'all', dac: false, min: 0, incomes: new Set(), ages: new Set(), sizes: new Set() };
+  const state = { util: 'all', dac: false, min: 0, incomes: new Set(), homes: new Set(), ages: new Set(), sizes: new Set() };
   let data, summary, walkIndex = {}, layer, currentList = null;
 
   const map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([40.72, -73.75], 11);
@@ -181,8 +182,11 @@
   document.getElementById('legendUt').innerHTML = Object.keys(UT)
     .map((u) => `<span><i style="border-color:${utColor(u)}"></i>${esc(UT[u].label)}</span>`).join('');
 
-  const TG = summary.targeting || { income_bands: [], owner_age_bands: [], size_bands: [], owner_age_avg: {} };
+  const TG = { income_bands: [], owner_age_bands: [], home_age_bands: [], size_bands: [], owner_age_avg: {}, ...(summary.targeting || {}) };
   const sizeLabel = (k) => (TG.size_bands.find((b) => b.key === k) || {}).label || '';
+  const homeLabel = (k) => (TG.home_age_bands.find((b) => b.key === k) || {}).label || '';
+  // Walk list: the house-level targets (home age, house size) filter each lot by its own facts.
+  const lotPasses = (r) => (!state.homes.size || state.homes.has(r.age)) && (!state.sizes.size || state.sizes.has(r.size));
 
   // Homeowner age: the tract has more homeowners in the picked ages than the turf as a whole.
   function ageOK(p) {
@@ -196,6 +200,7 @@
     (state.util === 'all' || p.utility === state.util) &&
     (!state.dac || p.dac === true) &&
     (!state.incomes.size || state.incomes.has(p.income_band)) &&
+    (!state.homes.size || state.homes.has(p.home_age_band)) &&
     (!state.ages.size || ageOK(p)) &&
     (!state.sizes.size || state.sizes.has(p.size_band)) &&
     p.score >= state.min;
@@ -227,6 +232,7 @@
             ${p.utility_split ? '<span class="badge">split utility</span>' : ''}
             ${p.dac ? '<span class="badge">DAC</span>' : ''}
             ${p.estimated_from ? '<span class="badge">estimated</span>' : ''}
+            ${p.renter_heavy ? `<span class="badge" style="border-color:#b45309;color:#b45309">renter-heavy ${pct(p.renter)}</span>` : ''}
             ${p.muni && p.utility !== 'muni' ? `<span class="badge" style="border-color:#6b7280">part village electric</span>` : ''}
           </div>
         </div>
@@ -234,10 +240,12 @@
       <div class="kv">
         <div><span>1–4 unit homes</span>${p.homes.toLocaleString()}${p.homes_source === 'acs_est' ? ' <small class="meta">(est.)</small>' : ''}</div>
         <div><span>Median income</span>${money(p.median_income)} ${p.income_band ? `<small class="meta">${esc(p.income_band)}</small>` : ''}</div>
-        <div><span>Median year built</span>${p.median_year_built ?? '—'}</div>
+        <div><span>Home age</span>${p.year_built ? `${esc(homeLabel(p.home_age_band))} <small class="meta">median ${p.year_built <= 1939 && p.homes_source !== 'pluto' ? '1939 or earlier' : p.year_built}</small>` : '—'}</div>
         <div><span>Built before 1980</span>${pct(p.pre1980)}</div>
-        <div><span>Owner-occupied</span>${pct(p.owner)}</div>
-        <div><span>Homeowner age</span>${p.owner_age ? TG.owner_age_bands.map((b) => `${esc(b.label)} ${pct(p.owner_age[b.key])}`).join(' · ') : '—'}</div>
+        <div><span>Owners / renters</span>${pct(p.owner)} / ${pct(p.renter)}</div>
+        ${p.homes_source === 'pluto' ? `<div><span>Homes with rental units</span>${(p.rental_unit_lots ?? 0).toLocaleString()} <small class="meta">2–4 family</small></div>
+        <div><span>Homes with a business</span>${(p.business_lots ?? 0).toLocaleString()}</div>` : ''}
+        <div><span>Homeowner age (est.)</span>${p.owner_age ? TG.owner_age_bands.map((b) => `${esc(b.label)} ${pct(p.owner_age[b.key])}`).join(' · ') : '—'}</div>
         <div><span>House size</span>${p.size_band ? `${esc(sizeLabel(p.size_band))} <small class="meta">${p.size_basis === 'sqft' ? `median ${Math.round(p.size_value).toLocaleString()} sq ft` : `median ${p.size_value} rooms`}</small>` : '—'}</div>
         <div><span>Heat: oil / gas / elec</span>${pct(fuel.oil)} / ${pct(fuel.gas)} / ${pct(fuel.electric)}</div>
       </div>
@@ -269,24 +277,33 @@
   const fmtDist = (m) => (m < 160 ? `${Math.round(m * 3.281 / 10) * 10} ft` : `${(m / 1609.34).toFixed(m < 16093 ? 1 : 0)} mi`);
   const walkOpen = () => document.getElementById('panel').classList.contains('open') && currentList != null;
 
+  const tag = (text, color) => `<span class="badge" style="border-color:${color};color:${color}">${esc(text)}</span>`;
+  function tags(r) {
+    let t = '';
+    if (r.rental) t += tag('rental unit', '#b45309');
+    if (r.biz) t += tag(r.biz, '#7c3aed');
+    return t;
+  }
+
   function renderWalk() {
     const list = document.getElementById('panelList');
     const here = loc.last;
-    walk.shown = state.sizes.size ? walk.rows.filter((r) => state.sizes.has(r.size)) : walk.rows.slice();
+    walk.shown = walk.rows.filter(lotPasses);
     if (walk.sort === 'near' && here) {
       walk.shown.sort((a, b) => metres(here, [a.lat, a.lon]) - metres(here, [b.lat, b.lon]));
       walk.sortedAt = here;
     }
     currentList.rows = walk.shown;
-    const sizeNote = state.sizes.size ? ` · ${[...state.sizes].map(sizeLabel).join(' / ')} houses` : '';
+    const picks = [...[...state.homes].map(homeLabel), ...[...state.sizes].map(sizeLabel)];
+    const sizeNote = picks.length ? ` · ${picks.join(' / ')}` : '';
     const sortNote = walk.sort === 'near' ? (here ? ' · nearest first' : ' · finding you…') : '';
     document.getElementById('walkMeta').textContent = `${walk.shown.length} of ${walk.rows.length} homes${sizeNote}${sortNote}`;
     list.innerHTML = walk.shown.map((r, i) => `
       <div class="item">
         <div class="s" style="color:${colorFor(r.score)}">${r.score}</div>
-        <div class="a">${esc(r.address)}<small>${r.units} unit${r.units > 1 ? 's' : ''} · built ${r.year || '—'}${r.sqft ? ` · ${Math.round(r.sqft).toLocaleString()} sq ft` : ''} · ${esc(r.cls)} · ${esc(r.zip)}</small></div>
+        <div class="a">${esc(r.address)}${tags(r)}<small>${r.units} unit${r.units > 1 ? 's' : ''} · built ${r.year || '—'}${r.sqft ? ` · ${Math.round(r.sqft).toLocaleString()} sq ft` : ''} · ${esc(r.cls)} · ${esc(r.zip)}</small></div>
         <div class="d"><span data-d="${i}">${here ? fmtDist(metres(here, [r.lat, r.lon])) : ''}</span><a href="https://maps.google.com/?q=${r.lat},${r.lon}" target="_blank" rel="noopener">Map</a></div>
-      </div>`).join('') || `<div class="empty">${walk.rows.length ? 'No homes match the house size you picked.' : 'No homes in this tract.'}</div>`;
+      </div>`).join('') || `<div class="empty">${walk.rows.length ? 'No homes match the home age / house size you picked.' : 'No homes in this tract.'}</div>`;
   }
 
   // Called on every GPS update while a walk list is open: refresh distances, re-sort after ~25 m of walking.
@@ -342,7 +359,7 @@
 
   function downloadCSV() {
     if (!currentList) return;
-    const cols = ['address', 'zip', 'units', 'year', 'sqft', 'size', 'cls', 'block', 'bbl', 'utility', 'score', 'lat', 'lon'];
+    const cols = ['address', 'zip', 'units', 'rental', 'biz', 'year', 'age', 'sqft', 'size', 'cls', 'block', 'bbl', 'utility', 'score', 'lat', 'lon'];
     const q = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
     const csv = [cols.join(','), ...currentList.rows.map((r) => cols.map((c) => q(r[c])).join(','))].join('\n');
     const a = document.createElement('a');
@@ -359,13 +376,14 @@
   // ---------- Target sheet ----------
   const groups = [
     ['tgIncome', 'incomes', TG.income_bands.map((b) => ({ key: b, label: b }))],
+    ['tgHome', 'homes', TG.home_age_bands],
     ['tgAge', 'ages', TG.owner_age_bands],
     ['tgSize', 'sizes', TG.size_bands],
   ];
   const countMatches = () => data.features.filter((f) => passes(f.properties)).length;
   function paintTarget() {
     for (const [id, k] of groups) document.querySelectorAll(`#${id} .chip`).forEach((b) => b.classList.toggle('on', state[k].has(b.dataset.k)));
-    const n = state.incomes.size + state.ages.size + state.sizes.size;
+    const n = state.incomes.size + state.homes.size + state.ages.size + state.sizes.size;
     const tb = document.getElementById('targetBtn');
     tb.textContent = n ? `Target · ${n}` : 'Target';
     tb.classList.toggle('on', n > 0);
@@ -383,7 +401,7 @@
   }
   document.getElementById('targetBtn').onclick = () => { paintTarget(); document.getElementById('sheet').classList.remove('open'); document.getElementById('targetSheet').classList.add('open'); };
   document.getElementById('targetDone').onclick = () => document.getElementById('targetSheet').classList.remove('open');
-  document.getElementById('targetClear').onclick = () => { state.incomes.clear(); state.ages.clear(); state.sizes.clear(); paintTarget(); render(); };
+  document.getElementById('targetClear').onclick = () => { state.incomes.clear(); state.homes.clear(); state.ages.clear(); state.sizes.clear(); paintTarget(); render(); };
   map.on('click', () => document.getElementById('targetSheet').classList.remove('open'));
 
   document.querySelectorAll('#walkSort button').forEach((b) => (b.onclick = () => {

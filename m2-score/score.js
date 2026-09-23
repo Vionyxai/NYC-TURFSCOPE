@@ -26,6 +26,21 @@ export function ownerAgeShares(v, bands) {
   return out;
 }
 
+// Home age band from a year built (ACS reports 1939 for "1939 or earlier").
+export function homeAgeBand(year, bands) {
+  if (!(year > 1800) || !bands) return null;
+  for (const b of bands) if (b.max_year == null || year <= b.max_year) return b.key;
+  return null;
+}
+
+// Business at a home: licensed businesses on the lot (DCWP), else a store/office recorded
+// in the building (mixed-use class S*, or commercial floor area).
+export function lotBusiness(lot, licensed) {
+  if (licensed && licensed.length) return licensed.length > 2 ? `${licensed.slice(0, 2).join(', ')} +${licensed.length - 2}` : licensed.join(', ');
+  if (/^S/.test(lot.cls || '') || lot.comarea > 0) return 'Store/office on site';
+  return null;
+}
+
 // Small / medium / large from building square feet (NYC lots) or median rooms (ACS).
 export function sizeBand(value, basis, bands) {
   if (value == null || !(value > 0) || !bands) return null;

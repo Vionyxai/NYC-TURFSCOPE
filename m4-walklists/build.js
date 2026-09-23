@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config, readJSON, readJSONIfExists, writeJSON, writeText, raw, out, log, toCSV, EXPORT_DIR, isMain } from '../lib/util.js';
 import { pointInFeatureCollection } from '../lib/geo.js';
-import { lotScore, lotUtility, sizeBand } from '../m2-score/score.js';
+import { lotScore, lotUtility, sizeBand, homeAgeBand, lotBusiness } from '../m2-score/score.js';
 
 // Sort key for NYC addresses, including Queens hyphenated numbers ("123-45 88 AVENUE").
 // Walk order: street → one side of the street → house number.
@@ -30,6 +30,7 @@ function main() {
   const lots = readJSONIfExists(raw('pluto_lots.json'));
   if (!lots) { log('No PLUTO lots — skipping walk lists.'); return; }
   const tracts = readJSON(out('tracts.geojson'));
+  const bizByBbl = readJSONIfExists(raw('business_by_bbl.json')) || {};
   const tractBy = new Map(tracts.features.map((f) => [f.properties.geoid, f.properties]));
 
   const groups = new Map();
@@ -45,6 +46,9 @@ function main() {
       year: l.year,
       sqft: l.sqft ?? null,
       size: sizeBand(l.sqft, 'sqft', scoring.targeting?.size_bands),
+      age: homeAgeBand(l.year, scoring.targeting?.home_age_bands),
+      rental: l.units >= 2, // 2–4 family: owner usually lives in one unit and rents the others
+      biz: lotBusiness(l, bizByBbl[l.bbl]),
       cls: l.cls,
       block: l.block,
       bbl: l.bbl,
@@ -70,7 +74,7 @@ function main() {
   writeJSON(path.join(dir, 'index.json'), index);
   writeText(
     path.join(EXPORT_DIR, 'walklists_all.csv'),
-    toCSV(all, ['tract', 'address', 'zip', 'units', 'year', 'sqft', 'size', 'cls', 'block', 'bbl', 'utility', 'score', 'lat', 'lon']),
+    toCSV(all, ['tract', 'address', 'zip', 'units', 'rental', 'year', 'age', 'sqft', 'size', 'cls', 'block', 'bbl', 'utility', 'score', 'lat', 'lon']),
   );
   log(`Walk lists · ${groups.size} tracts · ${all.length} lots → m3-map/data/walklists/ + exports/walklists_all.csv`);
 }

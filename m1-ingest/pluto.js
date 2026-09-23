@@ -45,6 +45,7 @@ export async function runPluto() {
           units,
           year: num(r.yearbuilt) || null,
           sqft: num(r.bldgarea) || null,
+          comarea: num(r.comarea) || 0,
           lat: num(r.latitude),
           lon: r.longitude != null ? Number(r.longitude) : null, // longitudes are negative; don't run through num()
           tract: plutoTractGeoid(r.bct2020),

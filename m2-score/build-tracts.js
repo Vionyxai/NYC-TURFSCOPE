@@ -3,7 +3,7 @@ import {
   config, readJSON, readJSONIfExists, writeJSON, raw, out, log, warn, round, activeCounties,
 } from '../lib/util.js';
 import { pointInFeatureCollection, roundGeometry, shareInside } from '../lib/geo.js';
-import { tractMetrics, scoreTract, incomeBand, dacFor2020, lotUtility, sizeBand } from './score.js';
+import { tractMetrics, scoreTract, incomeBand, dacFor2020, lotUtility, sizeBand, homeAgeBand, lotBusiness } from './score.js';
 
 const scoring = config('scoring.json');
 const util = config('utilities.json');
@@ -19,6 +19,7 @@ const geo = readJSON(raw('tracts_geo.json'));
 const lots = readJSONIfExists(raw('pluto_lots.json')) || [];
 const dac10 = readJSONIfExists(raw('dac_2010.json'));
 const rel = readJSONIfExists(raw('tract_rel.json'));
+const bizByBbl = readJSONIfExists(raw('business_by_bbl.json')) || {};
 if (!dac10) warn('No DAC data — incentive factor will be 0 for DAC-based utilities.');
 const muniCfg = util.municipal_electric || { places: [] };
 const muniPlaces = (readJSONIfExists(raw('muni_places.json'))?.features || [])
@@ -50,10 +51,13 @@ if (rel) {
 const lotAgg = new Map();
 for (const l of lots) {
   if (!l.tract) continue;
-  const a = lotAgg.get(l.tract) || { homes: 0, mf: 0, util: {}, sqft: [] };
+  const a = lotAgg.get(l.tract) || { homes: 0, mf: 0, util: {}, sqft: [], years: [], rental: 0, biz: 0 };
   if (l.units >= 1 && l.units <= 4) {
     a.homes++;
     if (l.sqft > 0) a.sqft.push(l.sqft);
+    if (l.year > 1800) a.years.push(l.year);
+    if (l.units >= 2) a.rental++;
+    if (lotBusiness(l, bizByBbl[l.bbl])) a.biz++;
     const u = lotUtility(l.zip, l.tract.slice(2, 5), util);
     a.util[u] = (a.util[u] || 0) + 1;
   } else if (l.units >= 5) a.mf++;
@@ -139,6 +143,11 @@ for (const f of geo.features) {
     size_basis = 'rooms'; size_value = m.median_rooms;
   }
   const size_band = sizeBand(size_value, size_basis, scoring.targeting?.size_bands);
+  // Home age: median year built of 1–4 family lots in NYC, else ACS median year built.
+  const median = (xs) => [...xs].sort((x, y) => x - y)[Math.floor(xs.length / 2)];
+  const year_built = usePluto && agg.years.length ? median(agg.years) : m.median_year_built;
+  const home_age_band = homeAgeBand(year_built, scoring.targeting?.home_age_bands);
+  const renter = m.owner_share == null ? null : 1 - m.owner_share;
   if (m.owner_age && m.owner_households > 0) {
     ownerTot += m.owner_households;
     for (const [k, v] of Object.entries(m.owner_age)) ownerAgeSum[k] = (ownerAgeSum[k] || 0) + v * m.owner_households;
@@ -161,12 +170,18 @@ for (const f of geo.features) {
       homes_source: usePluto ? 'pluto' : 'acs_est',
       estimated_from: estimatedFrom,
       multifamily_5plus_lots: usePluto ? agg.mf : null,
+      rental_unit_lots: usePluto ? agg.rental : null,
+      business_lots: usePluto ? agg.biz : null,
       median_income: m.median_income,
       income_band: incomeBand(m.median_income, scoring.income_bands),
       low_income_share: round(m.low_income_share),
       median_year_built: m.median_year_built,
       pre1980: round(m.pre1980_share),
       owner: round(m.owner_share),
+      renter: round(renter),
+      renter_heavy: renter != null && renter >= (scoring.targeting?.renter_heavy_share ?? 0.5),
+      year_built,
+      home_age_band,
       owner_age: m.owner_age ? Object.fromEntries(Object.entries(m.owner_age).map(([k, v]) => [k, round(v)])) : null,
       size_band,
       size_basis,
@@ -199,6 +214,7 @@ writeJSON(out('summary.json'), {
   targeting: {
     income_bands: scoring.income_bands.map((b) => b.label),
     owner_age_bands: (scoring.targeting?.owner_age_bands || []).map(({ key, label }) => ({ key, label })),
+    home_age_bands: scoring.targeting?.home_age_bands || [],
     size_bands: scoring.targeting?.size_bands || [],
     // Turf-wide share of homeowners in each age band, so the map can show "more than usual".
     owner_age_avg: Object.fromEntries(Object.entries(ownerAgeSum).map(([k, v]) => [k, round(v / ownerTot, 3)])),
