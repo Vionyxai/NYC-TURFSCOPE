@@ -132,5 +132,8 @@ writeJSON(out('summary.json'), {
   dropped,
 });
 
+const geoIds = new Set(geo.features.map((f) => String(f.properties?.GEOID)));
+const acsOnly = acs.rows.filter((r) => active.has(r.geoid.slice(2, 5)) && !geoIds.has(r.geoid));
+if (acsOnly.length) warn(`ACS tracts with no polygon: ${acsOnly.map((r) => `${r.geoid} (${r.name})`).join('; ')}`);
 for (const [k, ids] of Object.entries(droppedIds)) if (ids.length) log(`Dropped (${k}): ${ids.join(', ')}`);
 log(`Scored ${features.length} tracts →`, JSON.stringify(byUtil), '· dropped', JSON.stringify(dropped));
