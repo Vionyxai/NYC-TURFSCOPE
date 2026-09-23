@@ -6,7 +6,9 @@
     "verify": true
   },
   "tigerweb": {
-    "service": "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer",
+    "_service_note": "{year} is replaced with the ACS year so tract lines match the ACS data. Falls back to fallback_service if that vintage isn't published.",
+    "service": "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_ACS{year}/MapServer",
+    "fallback_service": "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer",
     "tract_layer_name": "Census Tracts",
     "simplify_deg": 0.00005,
     "page_size": 500,

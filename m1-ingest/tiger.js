@@ -1,17 +1,29 @@
 // m1 / TIGERweb: 2020 census tract polygons + internal points → data/raw/tracts_geo.json
-import { config, fetchJSON, writeJSON, raw, log, activeCounties, isMain } from '../lib/util.js';
+import { config, fetchJSON, readJSONIfExists, writeJSON, raw, log, warn, activeCounties, isMain } from '../lib/util.js';
 
 export async function runTiger() {
   const src = config('sources.json').tigerweb;
   const { state_fips } = config('areas.json');
 
-  // Look up the layer id by name instead of hardcoding it.
-  const meta = await fetchJSON(`${src.service}?f=json`);
-  const layer = (meta.layers || []).find((l) => l.name === src.tract_layer_name);
-  if (!layer) {
-    const names = (meta.layers || []).map((l) => `${l.id}:${l.name}`).join(' | ');
-    throw new Error(`TIGERweb layer "${src.tract_layer_name}" not found. Available: ${names}`);
+  // Use the tract lines that match the ACS year (ACS runs first and records it).
+  // "Current" can have newer tract splits the ACS data doesn't know about yet,
+  // and those tracts would be dropped for having no data.
+  const acsYear = readJSONIfExists(raw('acs_tracts.json'))?.year;
+  const candidates = [acsYear && src.service.replace('{year}', acsYear), src.fallback_service].filter(Boolean);
+  let service, layer;
+  for (const url of candidates) {
+    try {
+      // Look up the layer id by name instead of hardcoding it.
+      const meta = await fetchJSON(`${url}?f=json`);
+      layer = (meta.layers || []).find((l) => l.name === src.tract_layer_name);
+      if (layer) { service = url; break; }
+      warn(`TIGERweb layer "${src.tract_layer_name}" not in ${url}. Available: ${(meta.layers || []).map((l) => `${l.id}:${l.name}`).join(' | ')}`);
+    } catch (e) {
+      warn(`TIGERweb service unavailable: ${url} (${e.message.split('\n')[0]})`);
+    }
   }
+  if (!layer) throw new Error('No TIGERweb tract layer found. Check tigerweb settings in config/sources.json.');
+  log(`TIGER · using ${service.split('/').slice(-2, -1)[0]}`);
 
   const features = [];
   for (const c of activeCounties()) {
@@ -30,7 +42,7 @@ export async function runTiger() {
         resultRecordCount: String(src.page_size),
         f: 'geojson',
       });
-      const fc = await fetchJSON(`${src.service}/${layer.id}/query?${params}`);
+      const fc = await fetchJSON(`${service}/${layer.id}/query?${params}`);
       const batch = fc.features || [];
       features.push(...batch);
       got += batch.length;
