@@ -27,6 +27,7 @@ Two files control scope:
 **Utilities:**
 - Con Edison: NYC except the Rockaways, plus Westchester
 - PSEG LI: Nassau, Suffolk, and the Rockaway ZIPs (11691–11695, 11697)
+- Village electric (not PSEG LI): Freeport, Rockville Centre and Greenport run their own electric utilities. Their boundaries come from TIGERweb Incorporated Places; a tract that's mostly inside one is tagged `muni`, and a partial overlap is flagged on the card. PSEG LI rebates may not apply there. List lives in `config/utilities.json → municipal_electric`.
 
 **Target unit:** 1–4 family homes. 5+ unit buildings go through a separate multifamily program with a different buyer. They're counted on the card but never put on walk lists.
 
@@ -35,6 +36,7 @@ Two files control scope:
 **Tract heat map** (`m3-map/`, mobile-first, deploys to Vercel as static files)
 - Fill color = TurfScore; border color = utility
 - Filters: utility, DAC only, income band, minimum score; a "Best turf" ranked list
+- Live location: the locate button follows your GPS position and shows the tract you're standing in (score, utility). The position stays on the phone; nothing is sent or stored.
 - Tapping a tract opens a card: homes, median income plus band, median year built, % pre-1980, % owner-occupied, heating fuel mix, DAC, and the score breakdown
 
 **Walk lists** (NYC only in v1)

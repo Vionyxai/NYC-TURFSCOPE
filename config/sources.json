@@ -10,6 +10,7 @@
     "service": "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_ACS{year}/MapServer",
     "fallback_service": "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer",
     "tract_layer_name": "Census Tracts",
+    "place_layer_name": "Incorporated Places",
     "simplify_deg": 0.00005,
     "page_size": 500,
     "verify": true

@@ -2,7 +2,18 @@
   "_readme": "Utility tagging is rule-based: county default, then NYC ZIP overrides applied lot by lot. Rebate amounts here are reference notes only and must never be hardcoded into the UI.",
   "utilities": {
     "coned":  { "label": "Con Edison",       "color": "#2563eb" },
-    "psegli": { "label": "PSEG Long Island", "color": "#ea580c" }
+    "psegli": { "label": "PSEG Long Island", "color": "#ea580c" },
+    "muni":   { "label": "Village electric (not PSEG LI)", "color": "#6b7280" }
+  },
+  "municipal_electric": {
+    "_readme": "Villages that run their own electric utility inside PSEG LI's area. Their homes are not PSEG LI electric customers, so PSEG LI heat pump rebates may not apply — verify before knocking. Names must match the TIGERweb Incorporated Places NAME. A tract becomes 'muni' when at least majority_share of it is inside a village; smaller overlaps are flagged on the card.",
+    "utility": "muni",
+    "majority_share": 0.5,
+    "places": [
+      { "name": "Freeport village",         "label": "Freeport Electric" },
+      { "name": "Rockville Centre village", "label": "Rockville Centre Electric" },
+      { "name": "Greenport village",        "label": "Greenport Electric" }
+    ]
   },
   "county_default": {
     "081": "coned", "047": "coned", "061": "coned", "005": "coned", "119": "coned",

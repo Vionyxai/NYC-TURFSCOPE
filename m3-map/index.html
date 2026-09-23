@@ -64,6 +64,15 @@
   .item a { color: inherit; font-size: 13px; }
   .badge { font-size: 11px; padding: 2px 6px; border-radius: 6px; border: 1px solid; margin-left: 4px; }
   .empty { padding: 24px; color: var(--muted); text-align: center; }
+  .warn { margin: 8px 0; padding: 8px 10px; border-radius: 10px; background: var(--chip); border-left: 4px solid #6b7280; font-size: 13px; }
+  .locate { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+    font-size: 20px; line-height: 1; box-shadow: 0 1px 4px rgba(0,0,0,.2); display: flex; align-items: center; justify-content: center; }
+  .locate.on { background: #2563eb; color: #fff; border-color: #2563eb; }
+  .locate.track { color: #2563eb; border-color: #2563eb; }
+  .here { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px;
+    font-size: 13px; box-shadow: 0 1px 4px rgba(0,0,0,.2); max-width: calc(100vw - 90px); display: none; }
+  .here.show { display: block; }
+  .here b { font-size: 16px; margin-right: 4px; }
 </style>
 </head>
 <body>
@@ -78,6 +87,7 @@
         <button data-u="all" class="on">All</button>
         <button data-u="coned">Con Ed</button>
         <button data-u="psegli">PSEG LI</button>
+        <button data-u="muni">Village</button>
       </div>
       <button class="chip" id="dacBtn">DAC only</button>
       <select class="chip" id="bandSel"><option value="">Any income</option></select>
@@ -182,6 +192,7 @@
             ${p.utility_split ? '<span class="badge">split utility</span>' : ''}
             ${p.dac ? '<span class="badge">DAC</span>' : ''}
             ${p.estimated_from ? '<span class="badge">estimated</span>' : ''}
+            ${p.muni && p.utility !== 'muni' ? `<span class="badge" style="border-color:#6b7280">part village electric</span>` : ''}
           </div>
         </div>
       </div>
@@ -197,6 +208,7 @@
         ${Object.keys(w).map((k) => `
           <div class="b"><span>${k}</span><div class="track"><div class="fill" style="width:${w[k] ? ((parts[k] || 0) / w[k]) * 100 : 0}%"></div></div><span>${parts[k] ?? 0}</span></div>`).join('')}
       </div>
+      ${p.muni ? `<div class="warn"><b>${esc(p.muni.label)}</b> — a village-run electric utility, not PSEG LI — covers ${pct(p.muni.share)} of this tract. Homes there may not qualify for PSEG LI heat pump rebates. Check before knocking.</div>` : ''}
       ${p.estimated_from ? `<div class="meta">No Census survey data for this tract — numbers estimated from nearby tract ${esc(p.estimated_from.slice(5))}.</div>` : ''}
       ${p.gaps && p.gaps.length ? `<div class="meta">Missing data: ${esc(p.gaps.join(', '))}</div>` : ''}
       ${hasList
@@ -278,8 +290,109 @@
   document.getElementById('csvBtn').onclick = downloadCSV;
   map.on('click', closeSheet);
 
+  // ---------- Live location ----------
+  // Uses the phone's GPS through the browser. The position never leaves the phone:
+  // it's only used to draw the blue dot and look up which tract you're standing in.
+  const boxes = data.features.map((f) => {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    const walk = (a) => { if (typeof a[0] === 'number') { x0 = Math.min(x0, a[0]); x1 = Math.max(x1, a[0]); y0 = Math.min(y0, a[1]); y1 = Math.max(y1, a[1]); } else a.forEach(walk); };
+    walk(f.geometry.coordinates);
+    return [x0, y0, x1, y1];
+  });
+  const inRing = ([x, y], ring) => {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i], [xj, yj] = ring[j];
+      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  };
+  const inPoly = (pt, rings) => inRing(pt, rings[0]) && !rings.slice(1).some((r) => inRing(pt, r));
+  const inGeom = (pt, g) => (g.type === 'Polygon' ? inPoly(pt, g.coordinates) : g.coordinates.some((p) => inPoly(pt, p)));
+  function tractAt(lon, lat) {
+    for (let i = 0; i < data.features.length; i++) {
+      const b = boxes[i];
+      if (lon < b[0] || lon > b[2] || lat < b[1] || lat > b[3]) continue;
+      if (inGeom([lon, lat], data.features[i].geometry)) return data.features[i];
+    }
+    return null;
+  }
+
+  const loc = { watchId: null, follow: false, dot: null, ring: null, first: true, tract: null };
+  const LocateCtl = L.Control.extend({ onAdd() {
+    const b = L.DomUtil.create('button', 'locate');
+    b.id = 'locateBtn'; b.type = 'button'; b.title = 'Show my location'; b.setAttribute('aria-label', 'Show my location');
+    b.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
+    L.DomEvent.disableClickPropagation(b);
+    return b;
+  } });
+  const HereCtl = L.Control.extend({ onAdd() {
+    const d = L.DomUtil.create('div', 'here'); d.id = 'here';
+    L.DomEvent.disableClickPropagation(d);
+    return d;
+  } });
+  new LocateCtl({ position: 'topright' }).addTo(map);
+  new HereCtl({ position: 'topleft' }).addTo(map);
+  const btn = document.getElementById('locateBtn');
+  const here = document.getElementById('here');
+
+  function paintBtn() {
+    btn.classList.toggle('on', loc.watchId != null && loc.follow);
+    btn.classList.toggle('track', loc.watchId != null && !loc.follow);
+  }
+  function showHere(html) { here.innerHTML = html; here.classList.toggle('show', !!html); }
+
+  function onPos(pos) {
+    const { latitude: lat, longitude: lon, accuracy } = pos.coords;
+    const ll = [lat, lon];
+    if (!loc.dot) {
+      loc.ring = L.circle(ll, { radius: accuracy, color: '#2563eb', weight: 1, fillOpacity: 0.1, interactive: false }).addTo(map);
+      loc.dot = L.circleMarker(ll, { radius: 8, color: '#fff', weight: 3, fillColor: '#2563eb', fillOpacity: 1, interactive: false }).addTo(map);
+    } else { loc.dot.setLatLng(ll); loc.ring.setLatLng(ll).setRadius(accuracy); }
+    if (loc.follow) {
+      if (loc.first) map.setView(ll, Math.max(map.getZoom(), 16)); else map.panTo(ll, { animate: true });
+    }
+    loc.first = false;
+    const f = tractAt(lon, lat);
+    loc.tract = f;
+    if (f) {
+      const p = f.properties;
+      showHere(`<b style="color:${colorFor(p.score)}">${p.score}</b>${esc(p.county_name)} · tract ${esc(p.geoid.slice(5))}<div class="meta">${esc(utLabel(p.utility))}${p.dac ? ' · DAC' : ''} · tap for details</div>`);
+    } else {
+      showHere(`<div class="meta">You're outside the scored tracts${accuracy > 100 ? ` · GPS ±${Math.round(accuracy)} m` : ''}</div>`);
+    }
+  }
+  function onErr(err) {
+    const msg = err.code === 1 ? 'Location is blocked. Allow it for this site in your browser settings.'
+      : err.code === 3 ? 'Still looking for GPS…' : 'Could not get your location.';
+    showHere(`<div class="meta">${msg}</div>`);
+    if (err.code === 1) stopTracking(false);
+  }
+  function startTracking() {
+    if (!('geolocation' in navigator)) { showHere('<div class="meta">This browser can\'t share location.</div>'); return; }
+    loc.follow = true; loc.first = true;
+    showHere('<div class="meta">Finding you…</div>');
+    loc.watchId = navigator.geolocation.watchPosition(onPos, onErr, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
+    paintBtn();
+  }
+  function stopTracking(clear = true) {
+    if (loc.watchId != null) navigator.geolocation.clearWatch(loc.watchId);
+    loc.watchId = null; loc.follow = false; loc.tract = null;
+    if (loc.dot) { loc.dot.remove(); loc.ring.remove(); loc.dot = loc.ring = null; }
+    if (clear) showHere('');
+    paintBtn();
+  }
+  // Tap: off → follow me. Following → stop. Tracking but you panned away → follow again.
+  btn.onclick = () => {
+    if (loc.watchId == null) startTracking();
+    else if (loc.follow) stopTracking();
+    else { loc.follow = true; if (loc.dot) map.panTo(loc.dot.getLatLng()); paintBtn(); }
+  };
+  map.on('dragstart', () => { if (loc.follow) { loc.follow = false; paintBtn(); } });
+  here.onclick = () => { if (loc.tract) openSheet(loc.tract.properties); };
+
   render();
-  if (layer.getLayers().length) map.fitBounds(layer.getBounds());
+  if (layer.getLayers().length) map.fitBounds(layer.getBounds(), { animate: false });
 })();
 </script>
 </body>

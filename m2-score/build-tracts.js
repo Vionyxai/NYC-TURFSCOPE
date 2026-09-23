@@ -2,7 +2,7 @@
 import {
   config, readJSON, readJSONIfExists, writeJSON, raw, out, log, warn, round, activeCounties,
 } from '../lib/util.js';
-import { pointInFeatureCollection, roundGeometry } from '../lib/geo.js';
+import { pointInFeatureCollection, roundGeometry, shareInside } from '../lib/geo.js';
 import { tractMetrics, scoreTract, incomeBand, dacFor2020, lotUtility } from './score.js';
 
 const scoring = config('scoring.json');
@@ -20,6 +20,21 @@ const lots = readJSONIfExists(raw('pluto_lots.json')) || [];
 const dac10 = readJSONIfExists(raw('dac_2010.json'));
 const rel = readJSONIfExists(raw('tract_rel.json'));
 if (!dac10) warn('No DAC data — incentive factor will be 0 for DAC-based utilities.');
+const muniCfg = util.municipal_electric || { places: [] };
+const muniPlaces = (readJSONIfExists(raw('muni_places.json'))?.features || [])
+  .map((f) => ({ geometry: f.geometry, label: muniCfg.places.find((p) => p.name === f.properties?.NAME)?.label || f.properties?.NAME }))
+  .filter((p) => p.geometry);
+if (muniCfg.places.length && !muniPlaces.length) warn('No village boundaries (data/raw/muni_places.json) — municipal electric villages will show as PSEG LI.');
+
+// Which municipal-electric village (if any) covers this tract, and how much of it.
+function muniFor(geom) {
+  let best = null;
+  for (const p of muniPlaces) {
+    const share = shareInside(geom, p.geometry);
+    if (share > 0 && (!best || share > best.share)) best = { label: p.label, share: round(share) };
+  }
+  return best;
+}
 
 const acsBy = new Map(acs.rows.map((r) => [r.geoid, r]));
 let relIndex = null;
@@ -107,6 +122,9 @@ for (const f of geo.features) {
     const minority = ranked.slice(1).reduce((s, [, n]) => s + n, 0);
     utility_split = minority / agg.homes > util.split_threshold;
   }
+  // Villages with their own electric utility (Freeport, Rockville Centre, Greenport).
+  const muni = muniPlaces.length ? muniFor(f.geometry) : null;
+  if (muni && muni.share >= muniCfg.majority_share) utility = muniCfg.utility;
   if (!utility || !util.utilities[utility]) { dropped.noutil++; warn(`No utility for ${geoid}`); continue; }
 
   Object.assign(m, dacFor2020(geoid, relIndex, dac10));
@@ -121,6 +139,7 @@ for (const f of geo.features) {
       county_name: c.name,
       utility,
       utility_split,
+      muni,
       homes: m.homes,
       homes_source: usePluto ? 'pluto' : 'acs_est',
       estimated_from: estimatedFrom,
@@ -166,6 +185,8 @@ writeJSON(out('summary.json'), {
 const geoIds = new Set(geo.features.map((f) => String(f.properties?.GEOID)));
 const acsOnly = acs.rows.filter((r) => active.has(r.geoid.slice(2, 5)) && !geoIds.has(r.geoid));
 if (acsOnly.length) warn(`ACS tracts with no polygon: ${acsOnly.map((r) => `${r.geoid} (${r.name})`).join('; ')}`);
+const muniTracts = features.filter((x) => x.properties.muni);
+if (muniTracts.length) log(`Village electric · ${muniTracts.map((x) => `${x.properties.geoid} ${x.properties.muni.label} ${Math.round(x.properties.muni.share * 100)}%`).join(', ')}`);
 if (borrowed.length) warn(`No ACS data for ${borrowed.length} tracts — estimated from nearest tract: ${borrowed.join(', ')}`);
 for (const [k, ids] of Object.entries(droppedIds)) if (ids.length) log(`Dropped (${k}): ${ids.join(', ')}`);
 log(`Scored ${features.length} tracts →`, JSON.stringify(byUtil), '· dropped', JSON.stringify(dropped));

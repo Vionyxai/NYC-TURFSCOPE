@@ -1,13 +1,14 @@
-// m1 / run every fetcher. ACS + TIGER are required; PLUTO + DAC degrade gracefully.
+// m1 / run every fetcher. ACS + TIGER are required; Places, PLUTO + DAC degrade gracefully.
 import { log, warn, activeCounties } from '../lib/util.js';
 import { runACS } from './acs.js';
-import { runTiger } from './tiger.js';
+import { runTiger, runPlaces } from './tiger.js';
 import { runPluto } from './pluto.js';
 import { runDAC } from './dac.js';
 
 const steps = [
   ['ACS', runACS, true],
   ['TIGER', runTiger, true],
+  ['Places', runPlaces, false],
   ['PLUTO', runPluto, false],
   ['DAC', runDAC, false],
 ];

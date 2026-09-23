@@ -11,7 +11,7 @@ import { plutoTractGeoid } from '../m1-ingest/pluto.js';
 import { isDac, detectDacFields, parseRelationship } from '../m1-ingest/dac.js';
 import { incomeBand, dacFor2020, lotUtility, lotScore } from '../m2-score/score.js';
 import { addrKey, compareLots } from '../m4-walklists/build.js';
-import { pointInFeatureCollection } from '../lib/geo.js';
+import { pointInFeatureCollection, shareInside } from '../lib/geo.js';
 
 let passed = 0;
 const t = (name, fn) => { fn(); passed++; console.log('  ✓', name); };
@@ -96,6 +96,13 @@ t('boundary: in vs out', () => {
   assert.equal(pointInFeatureCollection([-74.15, 40.58], b), false); // Staten Island interior
 });
 
+t('share of a polygon inside another', () => {
+  const box = (x0, y0, x1, y1) => ({ type: 'Polygon', coordinates: [[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]] });
+  assert.equal(shareInside(box(0, 0, 1, 1), box(-1, -1, 2, 2)), 1);
+  assert.equal(shareInside(box(0, 0, 1, 1), box(0.5, 0, 2, 1)), 0.5);
+  assert.equal(shareInside(box(0, 0, 1, 1), box(5, 5, 6, 6)), 0);
+});
+
 // ---------- end-to-end on fixtures ----------
 console.log('pipeline');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'turfscope-'));
@@ -128,6 +135,12 @@ for (let i = 0; i < 30; i++) lots.push(lot(T.queens, `${100 + i} 88 AVENUE`, '11
 lots.push(lot(T.queens, '1 BIG TOWER', '11375', 40, 1965, -73.80, 40.72)); // 5+ units: counted, not listed
 for (let i = 0; i < 20; i++) lots.push(lot(T.rock, `${200 + i} BEACH 90 STREET`, '11693', 2, 1925, -73.80, 40.59));
 fs.writeFileSync(path.join(RAW, 'pluto_lots.json'), JSON.stringify(lots));
+// Villages with their own electric utility: one covers the whole Suffolk tract, one a quarter of Nassau's.
+const vbox = (x0, y0, x1, y1) => ({ type: 'Polygon', coordinates: [[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]] });
+fs.writeFileSync(path.join(RAW, 'muni_places.json'), JSON.stringify({ type: 'FeatureCollection', features: [
+  { type: 'Feature', properties: { NAME: 'Greenport village' }, geometry: vbox(-71.97, 41.01, -71.94, 41.05) },
+  { type: 'Feature', properties: { NAME: 'Freeport village' }, geometry: vbox(-73.595, 40.68, -73.58, 40.72) },
+] }));
 fs.writeFileSync(path.join(RAW, 'dac_2010.json'), JSON.stringify({ '36081000150': true, '36081000200': false }));
 fs.writeFileSync(path.join(RAW, 'tract_rel.json'), JSON.stringify([
   { g20: T.queens, g10: '36081000150', land: 800 }, { g20: T.queens, g10: '36081000160', land: 200 },
@@ -144,7 +157,7 @@ t('only active counties inside the boundary are kept', () => {
   assert.deepEqual(Object.keys(by).sort(), [T.queens, T.rock, T.nassau, T.suffolk, T.suffolkSplit].sort());
 });
 t('utility split: Queens=Con Ed, Rockaway/Nassau/Suffolk=PSEG LI', () => {
-  assert.equal(by[T.suffolk].utility, 'psegli');
+  assert.equal(by[T.suffolkSplit].utility, 'psegli');
   assert.equal(by[T.queens].utility, 'coned');
   assert.equal(by[T.rock].utility, 'psegli');
   assert.equal(by[T.nassau].utility, 'psegli');
@@ -173,6 +186,14 @@ t('tract with no ACS data borrows from the nearest tract in the same county', ()
   assert.equal(s.homes, by[T.suffolk].homes); // same land area in the fixture
   assert.equal(s.median_income, by[T.suffolk].median_income);
   assert.equal(by[T.suffolk].estimated_from, null);
+});
+t('municipal electric villages: majority → own utility, partial → flagged', () => {
+  assert.equal(by[T.suffolk].utility, 'muni');
+  assert.deepEqual(by[T.suffolk].muni, { label: 'Greenport Electric', share: 1 });
+  assert.equal(by[T.nassau].utility, 'psegli');
+  assert.equal(by[T.nassau].muni.label, 'Freeport Electric');
+  assert.ok(by[T.nassau].muni.share > 0.2 && by[T.nassau].muni.share < 0.3);
+  assert.equal(by[T.queens].muni, null);
 });
 t('summary carries scoring weights for the map card', () => {
   const summary = JSON.parse(fs.readFileSync(path.join(OUT, 'summary.json'), 'utf8'));
