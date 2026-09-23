@@ -1,0 +1,27 @@
+{
+  "_readme": "Utility tagging is rule-based: county default, then NYC ZIP overrides applied lot by lot. Rebate amounts here are reference notes only and must never be hardcoded into the UI.",
+  "utilities": {
+    "coned":  { "label": "Con Edison",       "color": "#2563eb" },
+    "psegli": { "label": "PSEG Long Island", "color": "#ea580c" }
+  },
+  "county_default": {
+    "081": "coned", "047": "coned", "061": "coned", "005": "coned", "119": "coned",
+    "059": "psegli", "103": "psegli"
+  },
+  "nyc_zip_overrides": {
+    "psegli": ["11691", "11692", "11693", "11694", "11695", "11697"]
+  },
+  "split_threshold": 0.1,
+  "program_reference": {
+    "coned": {
+      "note": "Residential (1-4 family) Clean Heat. Up to ~$10k ASHP; full amount requires removing or disabling the fossil system; higher in DAC tracts. Participating contractor required.",
+      "source": "https://www.coned.com/en/save-money/rebates-incentives-tax-credits/rebates-incentives-tax-credits-for-residential-customers",
+      "last_verified": "2026-09-22"
+    },
+    "psegli": {
+      "note": "PSEG LI administers NYS Clean Heat on Long Island as one whole-house rebate, tiered by income (60% / 80% AMI). DAC rate eligibility also exists.",
+      "source": "https://www.psegliny.com/en/saveenergyandmoney/homeefficiency/HomeComfort/HeatPumps/Rebates",
+      "last_verified": "2026-09-22"
+    }
+  }
+}

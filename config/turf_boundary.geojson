@@ -1,0 +1,30 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "TurfScope turf area",
+        "note": "Hand-drawn from Giovani's circled map. NYC (minus Staten Island via areas.json), southern Westchester Sound shore (Yonkers to Port Chester, White Plains excluded), Nassau, western/central Suffolk to about the Port Jefferson-Patchogue line. Redraw at geojson.io to move the edge."
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-74.06, 40.56],
+          [-74.03, 40.69],
+          [-74.03, 40.88],
+          [-73.92, 40.99],
+          [-73.80, 40.98],
+          [-73.66, 41.02],
+          [-73.60, 40.99],
+          [-73.30, 40.99],
+          [-72.95, 40.98],
+          [-72.95, 40.58],
+          [-73.60, 40.54],
+          [-73.95, 40.54],
+          [-74.06, 40.56]
+        ]]
+      }
+    }
+  ]
+}

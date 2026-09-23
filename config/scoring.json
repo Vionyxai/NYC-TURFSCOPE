@@ -1,0 +1,19 @@
+{
+  "_readme": "TurfScore = sum of weight * factor (each factor 0-1). Weights should total 100. Tune these from field results, not from code.",
+  "weights": { "volume": 25, "fuel": 25, "age": 20, "owner": 15, "incentive": 15 },
+  "volume_cap_homes": 800,
+  "fuel_weights": { "oil": 1.0, "propane": 1.0, "electric": 0.5, "other": 0.5, "gas": 0.25, "none": 0 },
+  "low_income_threshold": 100000,
+  "incentive": {
+    "coned":  { "dac": 1.0 },
+    "psegli": { "dac": 0.5, "low_income_share": 0.5 }
+  },
+  "income_bands": [
+    { "label": "<60k",     "max": 60000 },
+    { "label": "60–100k",  "max": 100000 },
+    { "label": "100–150k", "max": 150000 },
+    { "label": "150k+",    "max": null }
+  ],
+  "min_homes_to_show": 10,
+  "lot": { "small_bonus": 10, "pre1980_bonus": 10, "three_four_penalty": 10 }
+}

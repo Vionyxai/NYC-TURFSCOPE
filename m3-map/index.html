@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TurfScope NYC</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root {
+    --bg: #ffffff; --fg: #111827; --muted: #6b7280; --line: #e5e7eb; --chip: #f3f4f6;
+    --accent: #111827; --accent-fg: #ffffff; --shadow: 0 -8px 24px rgba(0,0,0,.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111318; --fg: #f3f4f6; --muted: #9ca3af; --line: #262a33; --chip: #1d2129;
+            --accent: #f3f4f6; --accent-fg: #111318; --shadow: 0 -8px 24px rgba(0,0,0,.5); }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  #app { position: fixed; inset: 0; display: flex; flex-direction: column; }
+  header { padding: calc(env(safe-area-inset-top, 0px) + 10px) 12px 8px; border-bottom: 1px solid var(--line);
+    background: var(--bg); z-index: 1000; }
+  .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .title { font-weight: 700; letter-spacing: .02em; margin-right: auto; }
+  .meta { color: var(--muted); font-size: 12px; }
+  .seg { display: flex; background: var(--chip); border-radius: 10px; padding: 3px; }
+  .seg button { border: 0; background: transparent; color: var(--fg); padding: 7px 10px; border-radius: 8px; font: inherit; font-size: 13px; }
+  .seg button.on { background: var(--accent); color: var(--accent-fg); }
+  .chip { border: 1px solid var(--line); background: var(--chip); color: var(--fg); border-radius: 999px; padding: 6px 10px; font: inherit; font-size: 13px; }
+  .chip.on { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  select.chip { appearance: none; }
+  label.slider { display: flex; align-items: center; gap: 6px; font-size: 13px; flex: 1; min-width: 160px; }
+  label.slider input { flex: 1; }
+  #map { flex: 1; }
+  .legend { position: absolute; left: 10px; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); z-index: 900;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; font-size: 11px; }
+  .legend .bar { display: flex; height: 8px; width: 140px; border-radius: 4px; overflow: hidden; margin: 4px 0; }
+  .legend .bar span { flex: 1; }
+  .legend .ut { display: flex; gap: 8px; margin-top: 4px; }
+  .legend .ut i { display: inline-block; width: 10px; height: 10px; border: 2px solid; border-radius: 2px; vertical-align: -1px; margin-right: 3px; }
+  .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1100; background: var(--bg); box-shadow: var(--shadow);
+    border-radius: 16px 16px 0 0; padding: 10px 14px calc(env(safe-area-inset-bottom, 0px) + 14px);
+    max-height: 70%; overflow-y: auto; transform: translateY(105%); transition: transform .2s ease; }
+  .sheet.open { transform: translateY(0); }
+  .grab { width: 40px; height: 4px; border-radius: 2px; background: var(--line); margin: 0 auto 10px; }
+  .score { font-size: 34px; font-weight: 800; line-height: 1; }
+  .kv { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin: 12px 0; }
+  .kv div span { display: block; color: var(--muted); font-size: 12px; }
+  .bars { margin: 8px 0 12px; }
+  .bars .b { display: grid; grid-template-columns: 80px 1fr 34px; gap: 8px; align-items: center; font-size: 12px; margin: 3px 0; }
+  .bars .track { height: 6px; background: var(--chip); border-radius: 3px; overflow: hidden; }
+  .bars .fill { height: 100%; background: var(--accent); }
+  .btn { display: block; width: 100%; border: 0; border-radius: 12px; padding: 12px; font: inherit; font-weight: 600;
+    background: var(--accent); color: var(--accent-fg); margin-top: 8px; }
+  .btn.ghost { background: var(--chip); color: var(--fg); }
+  .panel { position: fixed; inset: 0; z-index: 1200; background: var(--bg); display: none; flex-direction: column; }
+  .panel.open { display: flex; }
+  .panel header { display: flex; gap: 8px; align-items: center; }
+  .panel .list { flex: 1; overflow-y: auto; padding: 0 12px calc(env(safe-area-inset-bottom, 0px) + 12px); }
+  .item { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .item .s { font-weight: 800; width: 34px; text-align: center; }
+  .item .a { flex: 1; }
+  .item .a small { display: block; color: var(--muted); }
+  .item a { color: inherit; font-size: 13px; }
+  .badge { font-size: 11px; padding: 2px 6px; border-radius: 6px; border: 1px solid; margin-left: 4px; }
+  .empty { padding: 24px; color: var(--muted); text-align: center; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="row" style="margin-bottom:8px">
+      <div class="title">TurfScope NYC</div>
+      <div class="meta" id="meta">Loading…</div>
+    </div>
+    <div class="row" style="margin-bottom:6px">
+      <div class="seg" id="utilSeg">
+        <button data-u="all" class="on">All</button>
+        <button data-u="coned">Con Ed</button>
+        <button data-u="psegli">PSEG LI</button>
+      </div>
+      <button class="chip" id="dacBtn">DAC only</button>
+      <select class="chip" id="bandSel"><option value="">Any income</option></select>
+    </div>
+    <div class="row">
+      <label class="slider">Min score <input type="range" id="minScore" min="0" max="100" step="5" value="0"><b id="minVal">0</b></label>
+      <button class="chip" id="bestBtn">Best turf</button>
+    </div>
+  </header>
+  <div id="map"></div>
+  <div class="legend">
+    <div>TurfScore</div>
+    <div class="bar" id="legendBar"></div>
+    <div style="display:flex;justify-content:space-between"><span>0</span><span>100</span></div>
+    <div class="ut" id="legendUt"></div>
+  </div>
+</div>
+
+<div class="sheet" id="sheet"><div class="grab"></div><div id="sheetBody"></div></div>
+
+<div class="panel" id="panel">
+  <header>
+    <button class="chip" id="panelBack">‹ Back</button>
+    <div class="title" id="panelTitle"></div>
+    <button class="chip" id="csvBtn" style="display:none">CSV</button>
+  </header>
+  <div class="list" id="panelList"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(async function () {
+  if (typeof L === 'undefined') { document.getElementById('meta').textContent = 'Map failed to load — check your connection and refresh'; return; }
+  const COLORS = ['#b91c1c', '#ea580c', '#eab308', '#65a30d', '#15803d'];
+  const colorFor = (s) => COLORS[Math.min(4, Math.floor((s || 0) / 20))];
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const pct = (x) => (x == null ? '—' : Math.round(x * 100) + '%');
+  const money = (x) => (x == null ? '—' : '$' + Math.round(x / 1000) + 'k');
+
+  const state = { util: 'all', dac: false, band: '', min: 0 };
+  let data, summary, walkIndex = {}, layer, currentList = null;
+
+  const map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([40.72, -73.75], 11);
+  L.control.zoom({ position: 'topright' }).addTo(map);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '&copy; OpenStreetMap contributors',
+  }).addTo(map);
+
+  try {
+    [data, summary] = await Promise.all([
+      fetch('data/tracts.geojson').then((r) => r.json()),
+      fetch('data/summary.json').then((r) => r.json()),
+    ]);
+  } catch (e) {
+    document.getElementById('meta').textContent = 'No data yet — run npm run pipeline';
+    return;
+  }
+  try { walkIndex = await fetch('data/walklists/index.json').then((r) => (r.ok ? r.json() : {})); } catch (e) { walkIndex = {}; }
+
+  const UT = summary.utilities || {};
+  const utColor = (u) => (UT[u] && UT[u].color) || '#6b7280';
+  const utLabel = (u) => (UT[u] && UT[u].label) || u;
+
+  document.getElementById('meta').textContent = `${summary.tracts} tracts · ACS ${summary.acs_year}`;
+  document.getElementById('legendBar').innerHTML = COLORS.map((c) => `<span style="background:${c}"></span>`).join('');
+  document.getElementById('legendUt').innerHTML = Object.keys(UT)
+    .map((u) => `<span><i style="border-color:${utColor(u)}"></i>${esc(UT[u].label)}</span>`).join('');
+
+  const bands = [...new Set(data.features.map((f) => f.properties.income_band).filter(Boolean))];
+  document.getElementById('bandSel').innerHTML += bands.map((b) => `<option>${esc(b)}</option>`).join('');
+
+  const passes = (p) =>
+    (state.util === 'all' || p.utility === state.util) &&
+    (!state.dac || p.dac === true) &&
+    (!state.band || p.income_band === state.band) &&
+    p.score >= state.min;
+
+  function render() {
+    if (layer) layer.remove();
+    layer = L.geoJSON(data, {
+      filter: (f) => passes(f.properties),
+      style: (f) => ({
+        fillColor: colorFor(f.properties.score), fillOpacity: 0.55,
+        color: utColor(f.properties.utility), weight: 1.2, opacity: 0.9,
+      }),
+      onEachFeature: (f, l) => l.on('click', (e) => { L.DomEvent.stopPropagation(e); openSheet(f.properties); }),
+    }).addTo(map);
+  }
+
+  function openSheet(p) {
+    const fuel = p.fuel || {};
+    const parts = p.parts || {};
+    const w = summary.weights || {};
+    const hasList = walkIndex[p.geoid];
+    document.getElementById('sheetBody').innerHTML = `
+      <div class="row">
+        <div class="score" style="color:${colorFor(p.score)}">${p.score}</div>
+        <div style="margin-left:10px">
+          <div><b>${esc(p.county_name)}</b> · tract ${esc(p.geoid.slice(5))}</div>
+          <div class="meta">
+            <span class="badge" style="border-color:${utColor(p.utility)};color:${utColor(p.utility)}">${esc(utLabel(p.utility))}</span>
+            ${p.utility_split ? '<span class="badge">split utility</span>' : ''}
+            ${p.dac ? '<span class="badge">DAC</span>' : ''}
+          </div>
+        </div>
+      </div>
+      <div class="kv">
+        <div><span>1–4 unit homes</span>${p.homes.toLocaleString()}${p.homes_source === 'acs_est' ? ' <small class="meta">(est.)</small>' : ''}</div>
+        <div><span>Median income</span>${money(p.median_income)} ${p.income_band ? `<small class="meta">${esc(p.income_band)}</small>` : ''}</div>
+        <div><span>Median year built</span>${p.median_year_built ?? '—'}</div>
+        <div><span>Built before 1980</span>${pct(p.pre1980)}</div>
+        <div><span>Owner-occupied</span>${pct(p.owner)}</div>
+        <div><span>Heat: oil / gas / elec</span>${pct(fuel.oil)} / ${pct(fuel.gas)} / ${pct(fuel.electric)}</div>
+      </div>
+      <div class="bars">
+        ${Object.keys(w).map((k) => `
+          <div class="b"><span>${k}</span><div class="track"><div class="fill" style="width:${w[k] ? ((parts[k] || 0) / w[k]) * 100 : 0}%"></div></div><span>${parts[k] ?? 0}</span></div>`).join('')}
+      </div>
+      ${p.gaps && p.gaps.length ? `<div class="meta">Missing data: ${esc(p.gaps.join(', '))}</div>` : ''}
+      ${hasList
+        ? `<button class="btn" id="walkBtn">Walk list · ${hasList} homes</button>`
+        : `<div class="meta" style="margin-top:8px">No address-level list for this tract yet.</div>`}
+      <button class="btn ghost" id="closeSheet">Close</button>`;
+    document.getElementById('sheet').classList.add('open');
+    openedAt = Date.now();
+    document.getElementById('closeSheet').onclick = () => { openedAt = 0; closeSheet(); };
+    if (hasList) document.getElementById('walkBtn').onclick = () => openWalk(p);
+  }
+  let openedAt = 0;
+  function closeSheet() { if (Date.now() - openedAt < 300) return; document.getElementById('sheet').classList.remove('open'); }
+
+  async function openWalk(p) {
+    const list = document.getElementById('panelList');
+    document.getElementById('panelTitle').textContent = `Tract ${p.geoid.slice(5)} · ${p.county_name}`;
+    list.innerHTML = '<div class="empty">Loading…</div>';
+    document.getElementById('panel').classList.add('open');
+    try {
+      const rows = await fetch(`data/walklists/${p.geoid}.json`).then((r) => r.json());
+      currentList = { geoid: p.geoid, rows };
+      document.getElementById('csvBtn').style.display = '';
+      list.innerHTML = rows.map((r) => `
+        <div class="item">
+          <div class="s" style="color:${colorFor(r.score)}">${r.score}</div>
+          <div class="a">${esc(r.address)}<small>${r.units} unit${r.units > 1 ? 's' : ''} · built ${r.year || '—'} · ${esc(r.cls)} · ${esc(r.zip)}</small></div>
+          <a href="https://maps.google.com/?q=${r.lat},${r.lon}" target="_blank" rel="noopener">Map</a>
+        </div>`).join('') || '<div class="empty">No homes in this tract.</div>';
+    } catch (e) {
+      list.innerHTML = '<div class="empty">Could not load walk list.</div>';
+    }
+  }
+
+  function openBest() {
+    const top = data.features.filter((f) => passes(f.properties)).slice(0, 25); // already sorted by score
+    currentList = null;
+    document.getElementById('csvBtn').style.display = 'none';
+    document.getElementById('panelTitle').textContent = 'Best turf';
+    document.getElementById('panelList').innerHTML = top.map((f, i) => {
+      const p = f.properties;
+      return `<div class="item" data-i="${i}">
+        <div class="s" style="color:${colorFor(p.score)}">${p.score}</div>
+        <div class="a">${esc(p.county_name)} · tract ${esc(p.geoid.slice(5))}
+          <small>${p.homes.toLocaleString()} homes · ${money(p.median_income)} · ${pct(p.pre1980)} pre-1980 · ${esc(utLabel(p.utility))}${p.dac ? ' · DAC' : ''}</small></div>
+      </div>`;
+    }).join('') || '<div class="empty">Nothing matches these filters.</div>';
+    document.querySelectorAll('#panelList .item[data-i]').forEach((el) => {
+      el.onclick = () => {
+        const f = top[Number(el.dataset.i)];
+        document.getElementById('panel').classList.remove('open');
+        map.fitBounds(L.geoJSON(f).getBounds(), { maxZoom: 15 });
+        openSheet(f.properties);
+      };
+    });
+    document.getElementById('panel').classList.add('open');
+  }
+
+  function downloadCSV() {
+    if (!currentList) return;
+    const cols = ['address', 'zip', 'units', 'year', 'cls', 'block', 'bbl', 'utility', 'score', 'lat', 'lon'];
+    const q = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+    const csv = [cols.join(','), ...currentList.rows.map((r) => cols.map((c) => q(r[c])).join(','))].join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `walklist_${currentList.geoid}.csv`;
+    a.click();
+  }
+
+  document.querySelectorAll('#utilSeg button').forEach((b) => (b.onclick = () => {
+    document.querySelectorAll('#utilSeg button').forEach((x) => x.classList.toggle('on', x === b));
+    state.util = b.dataset.u; render();
+  }));
+  document.getElementById('dacBtn').onclick = (e) => { state.dac = !state.dac; e.target.classList.toggle('on', state.dac); render(); };
+  document.getElementById('bandSel').onchange = (e) => { state.band = e.target.value; render(); };
+  document.getElementById('minScore').oninput = (e) => { state.min = Number(e.target.value); document.getElementById('minVal').textContent = state.min; render(); };
+  document.getElementById('bestBtn').onclick = openBest;
+  document.getElementById('panelBack').onclick = () => document.getElementById('panel').classList.remove('open');
+  document.getElementById('csvBtn').onclick = downloadCSV;
+  map.on('click', closeSheet);
+
+  render();
+  if (layer.getLayers().length) map.fitBounds(layer.getBounds());
+})();
+</script>
+</body>
+</html>

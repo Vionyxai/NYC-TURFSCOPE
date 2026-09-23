@@ -1,0 +1,42 @@
+# Pulls live Census / NYC / NYS data, scores tracts, builds walk lists, and commits
+# m3-map/data/ back to the branch. Vercel redeploys on that commit.
+# Run it from GitHub: Actions tab → Refresh data → Run workflow.
+name: Refresh data
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency: refresh-data
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm test
+      - name: Run pipeline
+        run: npm run pipeline
+        env:
+          CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
+          NYC_APP_TOKEN: ${{ secrets.NYC_APP_TOKEN }}
+      - name: Summary
+        run: |
+          cat m3-map/data/summary.json
+          du -sh m3-map/data m3-map/data/walklists 2>/dev/null || true
+      - name: Upload office CSV
+        uses: actions/upload-artifact@v4
+        with:
+          name: walklists_all
+          path: exports/walklists_all.csv
+          if-no-files-found: ignore
+      - name: Commit map data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
+          git add -A m3-map/data
+          if git diff --cached --quiet; then echo "No data changes"; exit 0; fi
+          git commit -m "Refresh map data ($(date -u +%Y-%m-%d))"
+          git push

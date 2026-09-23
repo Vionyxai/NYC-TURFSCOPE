@@ -1,0 +1,16 @@
+{
+  "name": "turfscope-nyc",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Turf intelligence for door-to-door heat pump sales under NY Clean Heat (Con Edison + PSEG Long Island).",
+  "engines": { "node": ">=18.17" },
+  "scripts": {
+    "ingest": "node m1-ingest/index.js",
+    "score": "node m2-score/build-tracts.js",
+    "walklists": "node m4-walklists/build.js",
+    "pipeline": "npm run ingest && npm run score && npm run walklists",
+    "dev": "node scripts/serve.js",
+    "test": "node test/run.js"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "_readme": "Every external endpoint lives here. Items marked verify:true were not reachable from the environment this repo was generated in — confirm on first run.",
+  "acs": {
+    "base": "https://api.census.gov/data",
+    "years_to_try": [2024, 2023],
+    "verify": true
+  },
+  "tigerweb": {
+    "service": "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer",
+    "tract_layer_name": "Census Tracts",
+    "simplify_deg": 0.00005,
+    "page_size": 500,
+    "verify": true
+  },
+  "pluto": {
+    "url": "https://data.cityofnewyork.us/resource/64uk-42ks.json",
+    "fields": ["bbl", "borough", "block", "lot", "address", "zipcode", "bldgclass", "unitsres", "yearbuilt", "latitude", "longitude", "bct2020"],
+    "page_size": 50000,
+    "verify": true
+  },
+  "dac": {
+    "url": "https://data.ny.gov/resource/2e6c-s6fp.json",
+    "geoid_field": null,
+    "dac_field": null,
+    "note": "Uses 2010 census tracts. Converted to 2020 tracts via the Census relationship file below. Field names auto-detected when null.",
+    "verify": true
+  },
+  "tract_relationship": {
+    "url": "https://www2.census.gov/geo/docs/maps-data/data/rel2020/tract/tab20_tract20_tract10_st36.txt",
+    "verify": true
+  }
+}
