@@ -37,7 +37,7 @@ Run `npm run ingest` and work through any failures in this order:
 4. **DAC fields.** Auto-detects a `geoid` column and a designation column. Check the log line `DAC · N tracts (M DAC) · fields X / Y`. NY has 1,736 DAC tracts statewide; if M is 0 or ~4,900, detection is wrong — set `dac.geoid_field` / `dac.dac_field` explicitly.
 5. **Tract crosswalk.** Confirm the Census relationship file URL downloads. If it doesn't, DAC only matches tracts whose GEOID didn't change (you'll see a warning).
 6. **Sanity check the output.**
-   - `m3-map/data/summary.json` should show Queens ≈ 700 tracts and Nassau ≈ 280 (roughly — confirm, don't force).
+   - `m3-map/data/summary.json` should show Queens ≈ 700 tracts, Nassau ≈ 280 and Suffolk ≈ 320 (roughly — confirm, don't force).
    - The Rockaways should show as PSEG LI.
    - Spot-check 3 tracts you know against the NYSERDA DAC map.
 
@@ -54,7 +54,7 @@ Report what you changed and why after the first run.
 
 1. First live run + verification above
 2. Tune `config/scoring.json` from real knock results (Giovani will supply)
-3. Phase 2: set `areas.json → active_phase: 2` (Brooklyn, Manhattan, Bronx, Suffolk, southern Westchester)
+3. Phase 2: set `areas.json → active_phase: 2` (Brooklyn, Manhattan, Bronx, southern Westchester). Suffolk moved into phase 1 so all PSEG LI territory is covered.
 4. Nassau/Suffolk block-group scoring (ACS supports it; TIGERweb has a block group layer)
 5. Knock tracking: Supabase table keyed by BBL (status: knocked / not home / booked / no), synced from the walk list view
 6. `m5-freshness/` n8n jobs (see its README)

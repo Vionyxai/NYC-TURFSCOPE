@@ -8,7 +8,7 @@
     "047": { "name": "Brooklyn",    "nyc": true,  "borough": "BK", "phase": 2 },
     "061": { "name": "Manhattan",   "nyc": true,  "borough": "MN", "phase": 2 },
     "005": { "name": "Bronx",       "nyc": true,  "borough": "BX", "phase": 2 },
-    "103": { "name": "Suffolk",     "nyc": false,                  "phase": 2 },
+    "103": { "name": "Suffolk",     "nyc": false,                  "phase": 1 },
     "119": { "name": "Westchester", "nyc": false,                  "phase": 2 }
   },
   "excluded": { "085": "Staten Island — out for now" }

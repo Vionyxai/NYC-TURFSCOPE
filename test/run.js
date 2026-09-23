@@ -81,7 +81,18 @@ t('boundary: in vs out', () => {
   assert.equal(pointInFeatureCollection([-73.60, 40.70], b), true);  // Nassau
   assert.equal(pointInFeatureCollection([-73.76, 41.03], b), false); // White Plains
   assert.equal(pointInFeatureCollection([-73.54, 41.05], b), false); // Stamford CT
-  assert.equal(pointInFeatureCollection([-72.60, 40.90], b), false); // Riverhead
+  // All of PSEG Long Island's territory is in
+  assert.equal(pointInFeatureCollection([-72.66, 40.92], b), true);  // Riverhead
+  assert.equal(pointInFeatureCollection([-71.95, 41.03], b), true);  // Montauk
+  assert.equal(pointInFeatureCollection([-72.28, 41.14], b), true);  // Orient
+  assert.equal(pointInFeatureCollection([-72.34, 41.07], b), true);  // Shelter Island
+  assert.equal(pointInFeatureCollection([-72.39, 40.88], b), true);  // Southampton
+  assert.equal(pointInFeatureCollection([-73.13, 40.73], b), true);  // Islip
+  assert.equal(pointInFeatureCollection([-73.25, 40.63], b), true);  // Fire Island
+  assert.equal(pointInFeatureCollection([-73.92, 40.56], b), true);  // Breezy Point (Rockaways)
+  assert.equal(pointInFeatureCollection([-72.00, 41.27], b), false); // Fishers Island (not PSEG LI)
+  assert.equal(pointInFeatureCollection([-72.37, 41.29], b), false); // Old Saybrook CT
+  assert.equal(pointInFeatureCollection([-72.92, 41.30], b), false); // New Haven CT
   assert.equal(pointInFeatureCollection([-74.15, 40.58], b), false); // Staten Island interior
 });
 
@@ -93,11 +104,11 @@ fs.mkdirSync(RAW, { recursive: true });
 
 const sq = (lon, lat, d = 0.01) => ({ type: 'Polygon', coordinates: [[[lon - d, lat - d], [lon + d, lat - d], [lon + d, lat + d], [lon - d, lat + d], [lon - d, lat - d]]] });
 const tract = (geoid, lon, lat) => ({ type: 'Feature', geometry: sq(lon, lat), properties: { GEOID: geoid, INTPTLON: String(lon), INTPTLAT: `+${lat}` } });
-const T = { queens: '36081000100', rock: '36081000200', nassau: '36059000300', outside: '36059000400', manhattan: '36061000500' };
+const T = { queens: '36081000100', rock: '36081000200', nassau: '36059000300', suffolk: '36103000600', outside: '36103000400', manhattan: '36061000500' };
 
 fs.writeFileSync(path.join(RAW, 'tracts_geo.json'), JSON.stringify({ type: 'FeatureCollection', features: [
   tract(T.queens, -73.80, 40.72), tract(T.rock, -73.80, 40.59), tract(T.nassau, -73.60, 40.70),
-  tract(T.outside, -72.50, 40.80), tract(T.manhattan, -73.98, 40.76),
+  tract(T.suffolk, -71.95, 41.03), tract(T.outside, -72.00, 41.27), tract(T.manhattan, -73.98, 40.76),
 ] }));
 
 const acsV = (o) => ({
@@ -130,9 +141,10 @@ const fc = JSON.parse(fs.readFileSync(path.join(OUT, 'tracts.geojson'), 'utf8'))
 const by = Object.fromEntries(fc.features.map((f) => [f.properties.geoid, f.properties]));
 
 t('only active counties inside the boundary are kept', () => {
-  assert.deepEqual(Object.keys(by).sort(), [T.queens, T.rock, T.nassau].sort());
+  assert.deepEqual(Object.keys(by).sort(), [T.queens, T.rock, T.nassau, T.suffolk].sort());
 });
-t('utility split: Queens=Con Ed, Rockaway=PSEG LI, Nassau=PSEG LI', () => {
+t('utility split: Queens=Con Ed, Rockaway/Nassau/Suffolk=PSEG LI', () => {
+  assert.equal(by[T.suffolk].utility, 'psegli');
   assert.equal(by[T.queens].utility, 'coned');
   assert.equal(by[T.rock].utility, 'psegli');
   assert.equal(by[T.nassau].utility, 'psegli');

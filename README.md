@@ -1,6 +1,6 @@
 # TurfScope NYC
 
-Heat pump turf map for NY Clean Heat door-to-door sales. It scores census tracts in Queens and Nassau (then the rest of the turf area) by how many 1–4 family homes there are, how old they are, what they heat with, owner-occupancy and incentive eligibility. Every tract is tagged Con Edison or PSEG Long Island. Queens also gets address-level walk lists.
+Heat pump turf map for NY Clean Heat door-to-door sales. It scores census tracts in Queens, Nassau and Suffolk (then the rest of the turf area) by how many 1–4 family homes there are, how old they are, what they heat with, owner-occupancy and incentive eligibility. Every tract is tagged Con Edison or PSEG Long Island. Queens also gets address-level walk lists.
 
 ## Quick start
 

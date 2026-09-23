@@ -5,7 +5,7 @@
       "type": "Feature",
       "properties": {
         "name": "TurfScope turf area",
-        "note": "Hand-drawn from Giovani's circled map. NYC (minus Staten Island via areas.json), southern Westchester Sound shore (Yonkers to Port Chester, White Plains excluded), Nassau, western/central Suffolk to about the Port Jefferson-Patchogue line. Redraw at geojson.io to move the edge."
+        "note": "Hand-drawn from Giovani's circled map. NYC (minus Staten Island via areas.json), southern Westchester Sound shore (Yonkers to Port Chester, White Plains excluded), all of Long Island (Nassau + Suffolk, the full PSEG Long Island territory) out to Montauk and Orient Point. Fishers Island is left out (its own utility, not PSEG LI). Redraw at geojson.io to move the edge."
       },
       "geometry": {
         "type": "Polygon",
@@ -18,7 +18,13 @@
           [-73.66, 41.02],
           [-73.60, 40.99],
           [-73.30, 40.99],
-          [-72.95, 40.98],
+          [-72.95, 40.99],
+          [-72.60, 41.05],
+          [-72.30, 41.20],
+          [-72.05, 41.20],
+          [-71.80, 41.10],
+          [-71.80, 40.98],
+          [-72.40, 40.75],
           [-72.95, 40.58],
           [-73.60, 40.54],
           [-73.95, 40.54],

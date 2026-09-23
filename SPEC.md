@@ -16,13 +16,13 @@ For any piece of turf it answers four questions: where the homes are, how many, 
 
 ## 1. Scope
 
-- **Phase 1 (build now):** Queens (address-level) + Nassau (tract-level)
-- **Phase 2:** Brooklyn, Manhattan, Bronx, western/central Suffolk, southern Westchester Sound shore (Yonkers → Port Chester)
+- **Phase 1 (build now):** Queens (address-level) + all of PSEG Long Island's territory: Nassau and Suffolk (tract-level) and the Rockaways
+- **Phase 2:** Brooklyn, Manhattan, Bronx, southern Westchester Sound shore (Yonkers → Port Chester)
 - **Out:** Staten Island (for now), upstate, Connecticut
 
 Two files control scope:
 - `config/areas.json` — which counties, which phase
-- `config/turf_boundary.geojson` — the hand-drawn edge. Suffolk stops around the Port Jefferson–Patchogue line; White Plains is excluded.
+- `config/turf_boundary.geojson` — the hand-drawn edge. Covers all of Long Island out to Montauk and Orient Point (Fishers Island excluded — it has its own utility); White Plains is excluded.
 
 **Utilities:**
 - Con Edison: NYC except the Rockaways, plus Westchester
