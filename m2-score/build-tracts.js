@@ -3,7 +3,7 @@ import {
   config, readJSON, readJSONIfExists, writeJSON, raw, out, log, warn, round, activeCounties,
 } from '../lib/util.js';
 import { pointInFeatureCollection, roundGeometry, shareInside } from '../lib/geo.js';
-import { tractMetrics, scoreTract, incomeBand, dacFor2020, lotUtility } from './score.js';
+import { tractMetrics, scoreTract, incomeBand, dacFor2020, lotUtility, sizeBand } from './score.js';
 
 const scoring = config('scoring.json');
 const util = config('utilities.json');
@@ -50,9 +50,10 @@ if (rel) {
 const lotAgg = new Map();
 for (const l of lots) {
   if (!l.tract) continue;
-  const a = lotAgg.get(l.tract) || { homes: 0, mf: 0, util: {} };
+  const a = lotAgg.get(l.tract) || { homes: 0, mf: 0, util: {}, sqft: [] };
   if (l.units >= 1 && l.units <= 4) {
     a.homes++;
+    if (l.sqft > 0) a.sqft.push(l.sqft);
     const u = lotUtility(l.zip, l.tract.slice(2, 5), util);
     a.util[u] = (a.util[u] || 0) + 1;
   } else if (l.units >= 5) a.mf++;
@@ -81,6 +82,8 @@ const features = [];
 let dropped = { county: 0, boundary: 0, small: 0, noacs: 0, noutil: 0 };
 const droppedIds = { boundary: [], noacs: [] };
 const borrowed = [];
+let ownerTot = 0;
+const ownerAgeSum = {};
 
 for (const f of geo.features) {
   const p = f.properties || {};
@@ -127,6 +130,20 @@ for (const f of geo.features) {
   if (muni && muni.share >= muniCfg.majority_share) utility = muniCfg.utility;
   if (!utility || !util.utilities[utility]) { dropped.noutil++; warn(`No utility for ${geoid}`); continue; }
 
+  // House size: median building sq ft of 1–4 family lots where we have them (NYC), else ACS median rooms.
+  let size_basis = null, size_value = null;
+  if (usePluto && agg.sqft.length) {
+    const xs = [...agg.sqft].sort((x, y) => x - y);
+    size_basis = 'sqft'; size_value = xs[Math.floor(xs.length / 2)];
+  } else if (m.median_rooms > 0) {
+    size_basis = 'rooms'; size_value = m.median_rooms;
+  }
+  const size_band = sizeBand(size_value, size_basis, scoring.targeting?.size_bands);
+  if (m.owner_age && m.owner_households > 0) {
+    ownerTot += m.owner_households;
+    for (const [k, v] of Object.entries(m.owner_age)) ownerAgeSum[k] = (ownerAgeSum[k] || 0) + v * m.owner_households;
+  }
+
   Object.assign(m, dacFor2020(geoid, relIndex, dac10));
   const s = scoreTract(m, utility, scoring);
 
@@ -150,6 +167,10 @@ for (const f of geo.features) {
       median_year_built: m.median_year_built,
       pre1980: round(m.pre1980_share),
       owner: round(m.owner_share),
+      owner_age: m.owner_age ? Object.fromEntries(Object.entries(m.owner_age).map(([k, v]) => [k, round(v)])) : null,
+      size_band,
+      size_basis,
+      size_value,
       fuel: m.fuel ? Object.fromEntries(Object.entries(m.fuel).map(([k, v]) => [k, round(v)])) : null,
       dac: m.dac,
       dac_share: m.dac_share,
@@ -175,6 +196,13 @@ writeJSON(out('summary.json'), {
   acs_year: acs.year,
   active_phase: areas.active_phase,
   weights: scoring.weights,
+  targeting: {
+    income_bands: scoring.income_bands.map((b) => b.label),
+    owner_age_bands: (scoring.targeting?.owner_age_bands || []).map(({ key, label }) => ({ key, label })),
+    size_bands: scoring.targeting?.size_bands || [],
+    // Turf-wide share of homeowners in each age band, so the map can show "more than usual".
+    owner_age_avg: Object.fromEntries(Object.entries(ownerAgeSum).map(([k, v]) => [k, round(v / ownerTot, 3)])),
+  },
   counties: [...active.values()].map((c) => c.name),
   utilities: Object.fromEntries(Object.entries(util.utilities).map(([k, v]) => [k, { ...v, ...(byUtil[k] || { tracts: 0, homes: 0 }) }])),
   tracts: features.length,

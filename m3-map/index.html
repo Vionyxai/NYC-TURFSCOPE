@@ -73,6 +73,14 @@
     font-size: 13px; box-shadow: 0 1px 4px rgba(0,0,0,.2); max-width: calc(100vw - 90px); display: none; }
   .here.show { display: block; }
   .here b { font-size: 16px; margin-right: 4px; }
+  .group { margin: 10px 0 14px; }
+  .group h4 { margin: 0 0 6px; font-size: 13px; color: var(--muted); font-weight: 600; }
+  .group .row { gap: 8px; }
+  .group .chip { padding: 9px 14px; font-size: 14px; }
+  .walkbar { padding: 8px 12px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .walkbar .meta { flex: 1; min-width: 120px; }
+  .item .d { font-size: 12px; color: var(--muted); text-align: right; min-width: 52px; }
+  .item .d a { display: block; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -90,7 +98,7 @@
         <button data-u="muni">Village</button>
       </div>
       <button class="chip" id="dacBtn">DAC only</button>
-      <select class="chip" id="bandSel"><option value="">Any income</option></select>
+      <button class="chip" id="targetBtn">Target</button>
     </div>
     <div class="row">
       <label class="slider">Min score <input type="range" id="minScore" min="0" max="100" step="5" value="0"><b id="minVal">0</b></label>
@@ -108,12 +116,29 @@
 
 <div class="sheet" id="sheet"><div class="grab"></div><div id="sheetBody"></div></div>
 
+<div class="sheet" id="targetSheet">
+  <div class="grab"></div>
+  <div class="row"><div class="title">Target</div><button class="chip" id="targetClear">Clear all</button></div>
+  <div class="meta">Pick any mix. Nothing picked in a group means any.</div>
+  <div class="group"><h4>Income (tract median)</h4><div class="row" id="tgIncome"></div></div>
+  <div class="group"><h4>Homeowner age — more than usual</h4><div class="row" id="tgAge"></div></div>
+  <div class="group"><h4>House size</h4><div class="row" id="tgSize"></div></div>
+  <button class="btn" id="targetDone">Show tracts</button>
+</div>
+
 <div class="panel" id="panel">
   <header>
     <button class="chip" id="panelBack">‹ Back</button>
     <div class="title" id="panelTitle"></div>
     <button class="chip" id="csvBtn" style="display:none">CSV</button>
   </header>
+  <div class="walkbar" id="walkBar" style="display:none">
+    <div class="seg" id="walkSort">
+      <button data-s="walk" class="on">Walk order</button>
+      <button data-s="near">Nearest</button>
+    </div>
+    <div class="meta" id="walkMeta"></div>
+  </div>
   <div class="list" id="panelList"></div>
 </div>
 
@@ -127,7 +152,7 @@
   const pct = (x) => (x == null ? '—' : Math.round(x * 100) + '%');
   const money = (x) => (x == null ? '—' : '$' + Math.round(x / 1000) + 'k');
 
-  const state = { util: 'all', dac: false, band: '', min: 0 };
+  const state = { util: 'all', dac: false, min: 0, incomes: new Set(), ages: new Set(), sizes: new Set() };
   let data, summary, walkIndex = {}, layer, currentList = null;
 
   const map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([40.72, -73.75], 11);
@@ -156,13 +181,23 @@
   document.getElementById('legendUt').innerHTML = Object.keys(UT)
     .map((u) => `<span><i style="border-color:${utColor(u)}"></i>${esc(UT[u].label)}</span>`).join('');
 
-  const bands = [...new Set(data.features.map((f) => f.properties.income_band).filter(Boolean))];
-  document.getElementById('bandSel').innerHTML += bands.map((b) => `<option>${esc(b)}</option>`).join('');
+  const TG = summary.targeting || { income_bands: [], owner_age_bands: [], size_bands: [], owner_age_avg: {} };
+  const sizeLabel = (k) => (TG.size_bands.find((b) => b.key === k) || {}).label || '';
+
+  // Homeowner age: the tract has more homeowners in the picked ages than the turf as a whole.
+  function ageOK(p) {
+    if (!p.owner_age) return false;
+    let mine = 0, avg = 0;
+    for (const k of state.ages) { mine += p.owner_age[k] || 0; avg += TG.owner_age_avg[k] || 0; }
+    return mine >= avg - 0.005;
+  }
 
   const passes = (p) =>
     (state.util === 'all' || p.utility === state.util) &&
     (!state.dac || p.dac === true) &&
-    (!state.band || p.income_band === state.band) &&
+    (!state.incomes.size || state.incomes.has(p.income_band)) &&
+    (!state.ages.size || ageOK(p)) &&
+    (!state.sizes.size || state.sizes.has(p.size_band)) &&
     p.score >= state.min;
 
   function render() {
@@ -202,6 +237,8 @@
         <div><span>Median year built</span>${p.median_year_built ?? '—'}</div>
         <div><span>Built before 1980</span>${pct(p.pre1980)}</div>
         <div><span>Owner-occupied</span>${pct(p.owner)}</div>
+        <div><span>Homeowner age</span>${p.owner_age ? TG.owner_age_bands.map((b) => `${esc(b.label)} ${pct(p.owner_age[b.key])}`).join(' · ') : '—'}</div>
+        <div><span>House size</span>${p.size_band ? `${esc(sizeLabel(p.size_band))} <small class="meta">${p.size_basis === 'sqft' ? `median ${Math.round(p.size_value).toLocaleString()} sq ft` : `median ${p.size_value} rooms`}</small>` : '—'}</div>
         <div><span>Heat: oil / gas / elec</span>${pct(fuel.oil)} / ${pct(fuel.gas)} / ${pct(fuel.electric)}</div>
       </div>
       <div class="bars">
@@ -223,21 +260,56 @@
   let openedAt = 0;
   function closeSheet() { if (Date.now() - openedAt < 300) return; document.getElementById('sheet').classList.remove('open'); }
 
+  // ---------- Walk list ----------
+  const walk = { rows: [], shown: [], sort: 'walk', sortedAt: null };
+  const metres = (a, b) => {
+    const k = Math.cos((a[0] * Math.PI) / 180);
+    return Math.hypot((b[0] - a[0]) * 111320, (b[1] - a[1]) * 111320 * k);
+  };
+  const fmtDist = (m) => (m < 160 ? `${Math.round(m * 3.281 / 10) * 10} ft` : `${(m / 1609.34).toFixed(m < 16093 ? 1 : 0)} mi`);
+  const walkOpen = () => document.getElementById('panel').classList.contains('open') && currentList != null;
+
+  function renderWalk() {
+    const list = document.getElementById('panelList');
+    const here = loc.last;
+    walk.shown = state.sizes.size ? walk.rows.filter((r) => state.sizes.has(r.size)) : walk.rows.slice();
+    if (walk.sort === 'near' && here) {
+      walk.shown.sort((a, b) => metres(here, [a.lat, a.lon]) - metres(here, [b.lat, b.lon]));
+      walk.sortedAt = here;
+    }
+    currentList.rows = walk.shown;
+    const sizeNote = state.sizes.size ? ` · ${[...state.sizes].map(sizeLabel).join(' / ')} houses` : '';
+    const sortNote = walk.sort === 'near' ? (here ? ' · nearest first' : ' · finding you…') : '';
+    document.getElementById('walkMeta').textContent = `${walk.shown.length} of ${walk.rows.length} homes${sizeNote}${sortNote}`;
+    list.innerHTML = walk.shown.map((r, i) => `
+      <div class="item">
+        <div class="s" style="color:${colorFor(r.score)}">${r.score}</div>
+        <div class="a">${esc(r.address)}<small>${r.units} unit${r.units > 1 ? 's' : ''} · built ${r.year || '—'}${r.sqft ? ` · ${Math.round(r.sqft).toLocaleString()} sq ft` : ''} · ${esc(r.cls)} · ${esc(r.zip)}</small></div>
+        <div class="d"><span data-d="${i}">${here ? fmtDist(metres(here, [r.lat, r.lon])) : ''}</span><a href="https://maps.google.com/?q=${r.lat},${r.lon}" target="_blank" rel="noopener">Map</a></div>
+      </div>`).join('') || `<div class="empty">${walk.rows.length ? 'No homes match the house size you picked.' : 'No homes in this tract.'}</div>`;
+  }
+
+  // Called on every GPS update while a walk list is open: refresh distances, re-sort after ~25 m of walking.
+  function onWalkPos() {
+    if (!walkOpen()) return;
+    if (walk.sort === 'near' && (!walk.sortedAt || metres(walk.sortedAt, loc.last) > 25)) { renderWalk(); return; }
+    document.querySelectorAll('#panelList [data-d]').forEach((el) => {
+      const r = walk.shown[Number(el.dataset.d)];
+      if (r) el.textContent = fmtDist(metres(loc.last, [r.lat, r.lon]));
+    });
+  }
+
   async function openWalk(p) {
     const list = document.getElementById('panelList');
     document.getElementById('panelTitle').textContent = `Tract ${p.geoid.slice(5)} · ${p.county_name}`;
     list.innerHTML = '<div class="empty">Loading…</div>';
     document.getElementById('panel').classList.add('open');
     try {
-      const rows = await fetch(`data/walklists/${p.geoid}.json`).then((r) => r.json());
-      currentList = { geoid: p.geoid, rows };
+      walk.rows = await fetch(`data/walklists/${p.geoid}.json`).then((r) => r.json());
+      currentList = { geoid: p.geoid, rows: walk.rows };
       document.getElementById('csvBtn').style.display = '';
-      list.innerHTML = rows.map((r) => `
-        <div class="item">
-          <div class="s" style="color:${colorFor(r.score)}">${r.score}</div>
-          <div class="a">${esc(r.address)}<small>${r.units} unit${r.units > 1 ? 's' : ''} · built ${r.year || '—'} · ${esc(r.cls)} · ${esc(r.zip)}</small></div>
-          <a href="https://maps.google.com/?q=${r.lat},${r.lon}" target="_blank" rel="noopener">Map</a>
-        </div>`).join('') || '<div class="empty">No homes in this tract.</div>';
+      document.getElementById('walkBar').style.display = '';
+      renderWalk();
     } catch (e) {
       list.innerHTML = '<div class="empty">Could not load walk list.</div>';
     }
@@ -247,6 +319,7 @@
     const top = data.features.filter((f) => passes(f.properties)).slice(0, 25); // already sorted by score
     currentList = null;
     document.getElementById('csvBtn').style.display = 'none';
+    document.getElementById('walkBar').style.display = 'none';
     document.getElementById('panelTitle').textContent = 'Best turf';
     document.getElementById('panelList').innerHTML = top.map((f, i) => {
       const p = f.properties;
@@ -269,7 +342,7 @@
 
   function downloadCSV() {
     if (!currentList) return;
-    const cols = ['address', 'zip', 'units', 'year', 'cls', 'block', 'bbl', 'utility', 'score', 'lat', 'lon'];
+    const cols = ['address', 'zip', 'units', 'year', 'sqft', 'size', 'cls', 'block', 'bbl', 'utility', 'score', 'lat', 'lon'];
     const q = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
     const csv = [cols.join(','), ...currentList.rows.map((r) => cols.map((c) => q(r[c])).join(','))].join('\n');
     const a = document.createElement('a');
@@ -283,7 +356,42 @@
     state.util = b.dataset.u; render();
   }));
   document.getElementById('dacBtn').onclick = (e) => { state.dac = !state.dac; e.target.classList.toggle('on', state.dac); render(); };
-  document.getElementById('bandSel').onchange = (e) => { state.band = e.target.value; render(); };
+  // ---------- Target sheet ----------
+  const groups = [
+    ['tgIncome', 'incomes', TG.income_bands.map((b) => ({ key: b, label: b }))],
+    ['tgAge', 'ages', TG.owner_age_bands],
+    ['tgSize', 'sizes', TG.size_bands],
+  ];
+  const countMatches = () => data.features.filter((f) => passes(f.properties)).length;
+  function paintTarget() {
+    for (const [id, k] of groups) document.querySelectorAll(`#${id} .chip`).forEach((b) => b.classList.toggle('on', state[k].has(b.dataset.k)));
+    const n = state.incomes.size + state.ages.size + state.sizes.size;
+    const tb = document.getElementById('targetBtn');
+    tb.textContent = n ? `Target · ${n}` : 'Target';
+    tb.classList.toggle('on', n > 0);
+    const n2 = countMatches();
+    document.getElementById('targetDone').textContent = `Show ${n2} tract${n2 === 1 ? '' : 's'}`;
+  }
+  for (const [id, k, opts] of groups) {
+    const el = document.getElementById(id);
+    el.innerHTML = opts.map((o) => `<button class="chip" data-k="${esc(o.key)}">${esc(o.label)}</button>`).join('');
+    el.querySelectorAll('.chip').forEach((b) => (b.onclick = () => {
+      state[k].has(b.dataset.k) ? state[k].delete(b.dataset.k) : state[k].add(b.dataset.k);
+      paintTarget(); render();
+      if (walkOpen()) renderWalk();
+    }));
+  }
+  document.getElementById('targetBtn').onclick = () => { paintTarget(); document.getElementById('sheet').classList.remove('open'); document.getElementById('targetSheet').classList.add('open'); };
+  document.getElementById('targetDone').onclick = () => document.getElementById('targetSheet').classList.remove('open');
+  document.getElementById('targetClear').onclick = () => { state.incomes.clear(); state.ages.clear(); state.sizes.clear(); paintTarget(); render(); };
+  map.on('click', () => document.getElementById('targetSheet').classList.remove('open'));
+
+  document.querySelectorAll('#walkSort button').forEach((b) => (b.onclick = () => {
+    document.querySelectorAll('#walkSort button').forEach((x) => x.classList.toggle('on', x === b));
+    walk.sort = b.dataset.s; walk.sortedAt = null;
+    if (walk.sort === 'near' && loc.watchId == null) startTracking(); // need a GPS fix to sort by distance
+    renderWalk();
+  }));
   document.getElementById('minScore').oninput = (e) => { state.min = Number(e.target.value); document.getElementById('minVal').textContent = state.min; render(); };
   document.getElementById('bestBtn').onclick = openBest;
   document.getElementById('panelBack').onclick = () => document.getElementById('panel').classList.remove('open');
@@ -318,7 +426,7 @@
     return null;
   }
 
-  const loc = { watchId: null, follow: false, dot: null, ring: null, first: true, tract: null };
+  const loc = { watchId: null, follow: false, dot: null, ring: null, first: true, tract: null, last: null };
   const LocateCtl = L.Control.extend({ onAdd() {
     const b = L.DomUtil.create('button', 'locate');
     b.id = 'locateBtn'; b.type = 'button'; b.title = 'Show my location'; b.setAttribute('aria-label', 'Show my location');
@@ -345,6 +453,7 @@
   function onPos(pos) {
     const { latitude: lat, longitude: lon, accuracy } = pos.coords;
     const ll = [lat, lon];
+    loc.last = ll;
     if (!loc.dot) {
       loc.ring = L.circle(ll, { radius: accuracy, color: '#2563eb', weight: 1, fillOpacity: 0.1, interactive: false }).addTo(map);
       loc.dot = L.circleMarker(ll, { radius: 8, color: '#fff', weight: 3, fillColor: '#2563eb', fillOpacity: 1, interactive: false }).addTo(map);
@@ -353,6 +462,7 @@
       if (loc.first) map.setView(ll, Math.max(map.getZoom(), 16)); else map.panTo(ll, { animate: true });
     }
     loc.first = false;
+    onWalkPos();
     const f = tractAt(lon, lat);
     loc.tract = f;
     if (f) {
@@ -377,7 +487,7 @@
   }
   function stopTracking(clear = true) {
     if (loc.watchId != null) navigator.geolocation.clearWatch(loc.watchId);
-    loc.watchId = null; loc.follow = false; loc.tract = null;
+    loc.watchId = null; loc.follow = false; loc.tract = null; loc.last = null;
     if (loc.dot) { loc.dot.remove(); loc.ring.remove(); loc.dot = loc.ring = null; }
     if (clear) showHere('');
     paintBtn();

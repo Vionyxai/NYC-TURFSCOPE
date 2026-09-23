@@ -35,14 +35,15 @@ Two files control scope:
 
 **Tract heat map** (`m3-map/`, mobile-first, deploys to Vercel as static files)
 - Fill color = TurfScore; border color = utility
-- Filters: utility, DAC only, income band, minimum score; a "Best turf" ranked list
+- Filters: utility, DAC only, minimum score; a "Best turf" ranked list
+- Target (rep picks any mix; none picked in a group = any): income band (tract median), homeowner age (tracts where owners in the picked ages — Under 45 / 45–64 / 65+, ACS B25007 — are more common than turf-wide), house size (Small / Medium / Large: median building sq ft of 1–4 family lots from PLUTO in NYC, ACS median rooms B25018 elsewhere). Bands live in `config/scoring.json → targeting`.
 - Live location: the locate button follows your GPS position and shows the tract you're standing in (score, utility). The position stays on the phone; nothing is sent or stored.
 - Tapping a tract opens a card: homes, median income plus band, median year built, % pre-1980, % owner-occupied, heating fuel mix, DAC, and the score breakdown
 
 **Walk lists** (NYC only in v1)
 - Every 1–4 unit lot in the tract with a lot score
 - Walking order: street, then one side of the street, then house number (handles Queens hyphenated addresses)
-- On phone: list view, a map link per address, CSV download
+- On phone: list view, a map link per address, CSV download; distance to each home from your live location and a Nearest sort that re-sorts as you walk; the house size target filters lots by their own square footage
 - Office copy: `exports/walklists_all.csv`
 
 ## 3. Data sources
@@ -56,6 +57,8 @@ Two files control scope:
 | Year built | ACS 5-yr B25034 (distribution), B25035 (median) | Pre-1980 decades detected from labels |
 | Units in structure | ACS 5-yr B25024 | For home estimates outside NYC |
 | Tenure | ACS 5-yr B25003 | |
+| Homeowner age | ACS 5-yr B25007 | Owner households by age of householder |
+| Rooms | ACS 5-yr B25018 | Median rooms; house size outside NYC |
 | DAC | data.ny.gov `2e6c-s6fp` (2010 tracts) | |
 | Tract crosswalk | Census `tab20_tract20_tract10_st36.txt` | |
 

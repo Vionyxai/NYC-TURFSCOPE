@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config, readJSON, readJSONIfExists, writeJSON, writeText, raw, out, log, toCSV, EXPORT_DIR, isMain } from '../lib/util.js';
 import { pointInFeatureCollection } from '../lib/geo.js';
-import { lotScore, lotUtility } from '../m2-score/score.js';
+import { lotScore, lotUtility, sizeBand } from '../m2-score/score.js';
 
 // Sort key for NYC addresses, including Queens hyphenated numbers ("123-45 88 AVENUE").
 // Walk order: street → one side of the street → house number.
@@ -43,6 +43,8 @@ function main() {
       zip: l.zip,
       units: l.units,
       year: l.year,
+      sqft: l.sqft ?? null,
+      size: sizeBand(l.sqft, 'sqft', scoring.targeting?.size_bands),
       cls: l.cls,
       block: l.block,
       bbl: l.bbl,
@@ -68,7 +70,7 @@ function main() {
   writeJSON(path.join(dir, 'index.json'), index);
   writeText(
     path.join(EXPORT_DIR, 'walklists_all.csv'),
-    toCSV(all, ['tract', 'address', 'zip', 'units', 'year', 'cls', 'block', 'bbl', 'utility', 'score', 'lat', 'lon']),
+    toCSV(all, ['tract', 'address', 'zip', 'units', 'year', 'sqft', 'size', 'cls', 'block', 'bbl', 'utility', 'score', 'lat', 'lon']),
   );
   log(`Walk lists · ${groups.size} tracts · ${all.length} lots → m3-map/data/walklists/ + exports/walklists_all.csv`);
 }

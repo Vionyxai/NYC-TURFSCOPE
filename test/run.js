@@ -9,7 +9,7 @@ import { ROOT } from '../lib/util.js';
 import { pre1980Codes } from '../m1-ingest/acs.js';
 import { plutoTractGeoid } from '../m1-ingest/pluto.js';
 import { isDac, detectDacFields, parseRelationship } from '../m1-ingest/dac.js';
-import { incomeBand, dacFor2020, lotUtility, lotScore } from '../m2-score/score.js';
+import { incomeBand, dacFor2020, lotUtility, lotScore, ownerAgeShares, sizeBand } from '../m2-score/score.js';
 import { addrKey, compareLots } from '../m4-walklists/build.js';
 import { pointInFeatureCollection, shareInside } from '../lib/geo.js';
 
@@ -63,6 +63,21 @@ t('income bands', () => {
   assert.equal(incomeBand(100000, b), '100–150k');
   assert.equal(incomeBand(300000, b), '150k+');
   assert.equal(incomeBand(null, b), null);
+});
+t('homeowner age shares by band', () => {
+  const bands = readCfg('scoring.json').targeting.owner_age_bands;
+  const v = { B25007_002E: 100, B25007_003E: 5, B25007_004E: 10, B25007_005E: 15, B25007_006E: 20, B25007_007E: 10, B25007_008E: 10, B25007_009E: 20, B25007_010E: 8, B25007_011E: 2 };
+  assert.deepEqual(ownerAgeShares(v, bands), { u45: 0.3, '45_64': 0.4, '65p': 0.3 });
+  assert.equal(ownerAgeShares({ B25007_002E: 0 }, bands), null);
+});
+t('house size bands', () => {
+  const bands = readCfg('scoring.json').targeting.size_bands;
+  assert.equal(sizeBand(1200, 'sqft', bands), 'small');
+  assert.equal(sizeBand(2500, 'sqft', bands), 'medium');
+  assert.equal(sizeBand(4000, 'sqft', bands), 'large');
+  assert.equal(sizeBand(5, 'rooms', bands), 'small');
+  assert.equal(sizeBand(7.5, 'rooms', bands), 'large');
+  assert.equal(sizeBand(null, 'sqft', bands), null);
 });
 t('lot score bounds', () => {
   const c = readCfg('scoring.json').lot;
@@ -122,14 +137,15 @@ const acsV = (o) => ({
   B19013_001E: 95000, B19001_001E: 1000, B19001_012E: 200, B19001_013E: 150, B19001_014E: 650,
   B25040_001E: 1000, B25040_002E: 400, B25040_003E: 50, B25040_004E: 100, B25040_005E: 450, B25040_010E: 0,
   B25035_001E: 1955, B25024_001E: 1200, B25024_002E: 600, B25024_003E: 100, B25024_004E: 200, B25024_005E: 70,
-  B25003_001E: 1000, B25003_002E: 700, B25034_001E: 1000, B25034_007E: 300, B25034_011E: 400, ...o,
+  B25003_001E: 1000, B25003_002E: 700, B25034_001E: 1000, B25034_007E: 300, B25034_011E: 400,
+  B25007_002E: 700, B25007_004E: 70, B25007_006E: 210, B25007_008E: 140, B25007_009E: 280, B25018_001E: 6.2, ...o,
 });
 fs.writeFileSync(path.join(RAW, 'acs_tracts.json'), JSON.stringify({
   year: 2024, pre1980_codes: ['B25034_007E', 'B25034_011E'],
-  rows: Object.values(T).filter((g) => g !== T.suffolkSplit).map((g) => ({ geoid: g, name: g, v: acsV(g === T.nassau ? { B19013_001E: 140000 } : {}) })),
+  rows: Object.values(T).filter((g) => g !== T.suffolkSplit).map((g) => ({ geoid: g, name: g, v: acsV(g === T.nassau ? { B19013_001E: 140000, B25007_009E: 0, B25007_004E: 350 } : {}) })),
 }));
 
-const lot = (tract, address, zip, units, year, lon, lat) => ({ bbl: address, boro: 'QN', block: 1, address, zip, cls: units <= 1 ? 'A1' : units === 2 ? 'B1' : 'C0', units, year, lat, lon, tract });
+const lot = (tract, address, zip, units, year, lon, lat) => ({ bbl: address, boro: 'QN', block: 1, address, zip, cls: units <= 1 ? 'A1' : units === 2 ? 'B1' : 'C0', units, year, sqft: units <= 1 ? 1400 : 2800, lat, lon, tract });
 const lots = [];
 for (let i = 0; i < 30; i++) lots.push(lot(T.queens, `${100 + i} 88 AVENUE`, '11375', i % 3 === 0 ? 3 : 1, 1940, -73.80, 40.72));
 lots.push(lot(T.queens, '1 BIG TOWER', '11375', 40, 1965, -73.80, 40.72)); // 5+ units: counted, not listed
@@ -195,6 +211,17 @@ t('municipal electric villages: majority → own utility, partial → flagged', 
   assert.ok(by[T.nassau].muni.share > 0.2 && by[T.nassau].muni.share < 0.3);
   assert.equal(by[T.queens].muni, null);
 });
+t('targeting: homeowner age, house size, turf-wide age average', () => {
+  assert.deepEqual(by[T.queens].owner_age, { u45: 0.1, '45_64': 0.5, '65p': 0.4 });
+  assert.equal(by[T.queens].size_basis, 'sqft');
+  assert.equal(by[T.queens].size_value, 1400);      // 20 one-family (1,400 sq ft) vs 10 three-family lots
+  assert.equal(by[T.queens].size_band, 'small');
+  assert.equal(by[T.nassau].size_basis, 'rooms');
+  assert.equal(by[T.nassau].size_band, 'medium');   // 6.2 median rooms
+  const summary = JSON.parse(fs.readFileSync(path.join(OUT, 'summary.json'), 'utf8'));
+  assert.deepEqual(summary.targeting.income_bands, ['<60k', '60–100k', '100–150k', '150k+']);
+  assert.ok(summary.targeting.owner_age_avg['65p'] > 0 && summary.targeting.owner_age_avg['65p'] < 0.4);
+});
 t('summary carries scoring weights for the map card', () => {
   const summary = JSON.parse(fs.readFileSync(path.join(OUT, 'summary.json'), 'utf8'));
   assert.deepEqual(summary.weights, readCfg('scoring.json').weights);
@@ -204,6 +231,8 @@ t('walk lists: 1–4 units only, ordered, CSV written', () => {
   assert.equal(q.length, 30);
   assert.ok(!q.some((r) => r.units >= 5));
   assert.equal(q[0].address, '100 88 AVENUE'); // even side first
+  assert.equal(q[1].sqft, 1400);
+  assert.equal(q[1].size, 'small');
   const idx = JSON.parse(fs.readFileSync(path.join(OUT, 'walklists', 'index.json'), 'utf8'));
   assert.equal(idx[T.rock], 20);
   assert.ok(fs.readFileSync(path.join(EXP, 'walklists_all.csv'), 'utf8').startsWith('tract,address'));

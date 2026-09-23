@@ -17,7 +17,7 @@
   },
   "pluto": {
     "url": "https://data.cityofnewyork.us/resource/64uk-42ks.json",
-    "fields": ["bbl", "borough", "block", "lot", "address", "zipcode", "bldgclass", "unitsres", "yearbuilt", "latitude", "longitude", "bct2020"],
+    "fields": ["bbl", "borough", "block", "lot", "address", "zipcode", "bldgclass", "unitsres", "yearbuilt", "latitude", "longitude", "bct2020", "bldgarea"],
     "page_size": 50000,
     "verify": true
   },

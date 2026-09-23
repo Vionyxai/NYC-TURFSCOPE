@@ -8,6 +8,32 @@ export function incomeBand(median, bands) {
   return null;
 }
 
+// B25007 owner-occupied lines: [variable suffix, youngest age in bracket]
+export const B25007_OWNER_BRACKETS = [
+  ['003', 15], ['004', 25], ['005', 35], ['006', 45], ['007', 55], ['008', 60], ['009', 65], ['010', 75], ['011', 85],
+];
+
+// Share of owner households whose householder falls in each configured age band.
+export function ownerAgeShares(v, bands) {
+  const tot = v.B25007_002E;
+  if (!(tot > 0) || !bands) return null;
+  const out = {};
+  for (const b of bands) {
+    let n = 0;
+    for (const [c, from] of B25007_OWNER_BRACKETS) if (from >= b.from && from <= b.to) n += v[`B25007_${c}E`] || 0;
+    out[b.key] = n / tot;
+  }
+  return out;
+}
+
+// Small / medium / large from building square feet (NYC lots) or median rooms (ACS).
+export function sizeBand(value, basis, bands) {
+  if (value == null || !(value > 0) || !bands) return null;
+  const k = basis === 'sqft' ? 'max_sqft' : 'max_rooms';
+  for (const b of bands) if (b[k] == null || value <= b[k]) return b.key;
+  return null;
+}
+
 // Turn raw ACS variables into readable metrics.
 export function tractMetrics(v, pre1980Codes, cfg) {
   const fuelTot = v.B25040_001E;
@@ -41,6 +67,9 @@ export function tractMetrics(v, pre1980Codes, cfg) {
     owner_share: v.B25003_001E > 0 ? (v.B25003_002E || 0) / v.B25003_001E : null,
     low_income_share: hh > 0 ? low / hh : null,
     homes_est: Math.round(homesEst),
+    owner_households: v.B25007_002E ?? null,
+    owner_age: ownerAgeShares(v, cfg.targeting?.owner_age_bands),
+    median_rooms: v.B25018_001E ?? null,
   };
 }
 

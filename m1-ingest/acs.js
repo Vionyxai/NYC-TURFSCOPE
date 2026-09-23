@@ -19,6 +19,8 @@ export const MAIN_VARS = [
   'B25035_001E',                                   // median year structure built
   ...series('B25024', 1, 5),                       // units in structure (total, 1 det, 1 att, 2, 3-4)
   'B25003_001E', 'B25003_002E',                    // tenure: occupied, owner-occupied
+  ...series('B25007', 2, 11),                      // owner-occupied households by age of householder
+  'B25018_001E',                                   // median rooms (house size outside NYC)
 ];
 
 // Pick B25034 (year built) variables for decades before 1980 by reading labels,
