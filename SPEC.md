@@ -42,7 +42,7 @@ Two files control scope:
 - Renters: every card shows owners / renters; tracts with ≥ 50% renter households get a renter-heavy badge. In NYC the card also counts 2–4 family homes (which have rental units) and homes with a business.
 - Tapping a tract opens a card: homes, median income plus band, median year built, % pre-1980, % owner-occupied, heating fuel mix, DAC, and the score breakdown
 
-**Walk lists** (NYC only in v1)
+**Walk lists** (Queens from NYC PLUTO; Nassau and Suffolk from the NYS assessment roll)
 - Every 1–4 unit lot in the tract with a lot score
 - Walking order: street, then one side of the street, then house number (handles Queens hyphenated addresses)
 - Each house is tagged "rental unit" when it's a 2–4 family (owner usually rents the other units) and with the business type when a business operates there: an active NYC DCWP premises license on the lot (category only, no names), or a store/office recorded in the building (PLUTO class S*, commercial floor area). Single-family rentals can't be told apart from public data.
@@ -76,6 +76,7 @@ Two files control scope:
 | Homeowner age | ACS 5-yr B25007 | Owner households by age of householder |
 | Rooms | ACS 5-yr B25018 | Median rooms; house size outside NYC |
 | DAC | data.ny.gov `2e6c-s6fp` (2010 tracts) | |
+| Long Island homes | NYS ITS Tax Parcel Centroid Points (2025 roll) | Address + home type for every 1–3 family property; year built, sq ft and heating fuel where the town assessor reports them (parts of Suffolk). Owner names and mailing addresses are never requested |
 | Home businesses | NYC DCWP licenses `w7w3-xahh` | Active Premises licenses only; category kept, nothing personal |
 | Tract crosswalk | Census `tab20_tract20_tract10_st36.txt` | |
 
@@ -124,7 +125,7 @@ Each module talks to the others only through files. Zero dependencies (Node ≥ 
 
 ## 7. Open questions
 
-- **Nassau/Suffolk parcel data.** Is it public? That decides whether LI ever gets address-level lists.
+- ~~Nassau/Suffolk parcel data~~ answered: the NYS assessment roll is public statewide (see Data sources). Nassau has no year built or fuel; Suffolk has them for about 1 in 6 homes.
 - **Broad Channel (11693).** Confirm it's PSEG LI; the whole ZIP is treated that way now.
 - **Licensing.** NYC requires a Home Improvement Salesperson license (DCWP) for door-to-door home improvement sales; Nassau/Suffolk have their own rules and some towns require solicitor permits. Confirm with the shop.
 - **Program numbers.** Reference only, in `config/utilities.json` with `last_verified`. Never shown as fixed amounts in the UI.

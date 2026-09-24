@@ -5,6 +5,7 @@ import { runTiger, runPlaces } from './tiger.js';
 import { runPluto } from './pluto.js';
 import { runDAC } from './dac.js';
 import { runBusiness } from './business.js';
+import { runLiParcels } from './li_parcels.js';
 
 const steps = [
   ['ACS', runACS, true],
@@ -13,6 +14,7 @@ const steps = [
   ['PLUTO', runPluto, false],
   ['DAC', runDAC, false],
   ['Businesses', runBusiness, false],
+  ['LI parcels', runLiParcels, false],
 ];
 
 log(`Ingest · active counties: ${activeCounties().map((c) => c.name).join(', ')}`);

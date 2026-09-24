@@ -27,7 +27,7 @@ Keys go in `.env` (see `.env.example`). `CENSUS_API_KEY` is required (the Census
 - **Never hardcode rebate dollar amounts in the UI.** They change. Reference notes live in `config/utilities.json` with `last_verified`.
 - **Keep scoring pure.** `m2-score/score.js` has no I/O. Add a test in `test/run.js` for any scoring change.
 - **Mobile first.** Every map change must work one-handed on a phone. Test at 390px wide.
-- **Don't store personal data.** Walk lists are addresses and building facts only. Don't add owner names or phone numbers. Team notes are free text (≤ 280 chars) because Giovani wants reps to coordinate; the database (`clean_note`) and the app (`noteProblem` in `m3-map/team.js`) both refuse phone numbers and emails. Keep those two rules identical (`npm test` checks).
+- **Don't store personal data.** Walk lists are addresses and building facts only. The NYS parcel service also carries owner names and mailing addresses: never add those to `sources.json → li_parcels.fields` (`npm test` checks). Don't add owner names or phone numbers. Team notes are free text (≤ 280 chars) because Giovani wants reps to coordinate; the database (`clean_note`) and the app (`noteProblem` in `m3-map/team.js`) both refuse phone numbers and emails. Keep those two rules identical (`npm test` checks).
 - **iPhone first.** The team runs this as a home-screen app in iPhone Safari. Inputs ≥ 16px (smaller zooms the page), tap targets ≥ 44px, respect safe areas, test at 375px (SE) and 393px (iPhone 15).
 - **Team tracking.** `config/team.json` (reps + map colors, knock statuses, follow-ups, turf statuses) must match `supabase/001_team_tracking.sql`; `npm test` checks. Every rep sees everything and can change any house or area status; entries are stamped with the rep; undo only your own (admin: any). Schema changes go in a new numbered SQL file in `supabase/` with tests in `supabase/tests/rls_test.sql`. The app only ever gets the publishable key; never the service_role/secret key.
 
@@ -59,7 +59,7 @@ Report what you changed and why after the first run.
 1. First live run + verification above
 2. Tune `config/scoring.json` from real knock results (Giovani will supply)
 3. Phase 2: set `areas.json → active_phase: 2` (Brooklyn, Manhattan, Bronx, southern Westchester). Suffolk moved into phase 1 so all PSEG LI territory is covered.
-4. Nassau/Suffolk block-group scoring (ACS supports it; TIGERweb has a block group layer)
+4. Nassau/Suffolk block-group scoring (ACS supports it; TIGERweb has a block group layer). Long Island walk lists are built from the NYS assessment roll (`m1-ingest/li_parcels.js`).
 5. ~~Knock tracking~~ built, plus turf claims, notes and pins: `supabase/` (SQL + setup guide), `m3-map/team.js`. Needs the Supabase project URL + publishable key in `config/supabase.json`.
 6. `m5-freshness/` n8n jobs (see its README)
 

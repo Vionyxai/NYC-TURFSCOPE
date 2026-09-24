@@ -137,5 +137,6 @@ export function lotScore(lot, tractScore, lotCfg) {
   if (lot.units <= 2) s += lotCfg.small_bonus;
   else s -= lotCfg.three_four_penalty;
   if (lot.year && lot.year > 1800 && lot.year < 1980) s += lotCfg.pre1980_bonus;
+  if (lot.fuel === 'oil') s += lotCfg.oil_on_record_bonus || 0;   // assessor records say this house heats with oil
   return Math.max(0, Math.min(100, Math.round(s)));
 }

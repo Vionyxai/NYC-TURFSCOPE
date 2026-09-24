@@ -42,5 +42,10 @@
     ]
   },
   "min_homes_to_show": 10,
-  "lot": { "small_bonus": 10, "pre1980_bonus": 10, "three_four_penalty": 10 }
+  "lot": { "small_bonus": 10, "pre1980_bonus": 10, "three_four_penalty": 10, "oil_on_record_bonus": 10 },
+  "li_property_classes": {
+    "_readme": "NYS assessment property classes kept for Long Island walk lists, and how many homes (units) each means. 21x one-family (215 has an accessory apartment), 220 two-family, 230 three-family, 24x/25x rural residence / estate, 280-283 multiple residences / residence with incidental commercial use. Seasonal (260) and mobile homes (270) are left out.",
+    "units": { "210": 1, "211": 1, "212": 1, "213": 1, "214": 1, "215": 2, "216": 1, "217": 1, "218": 1, "219": 1, "220": 2, "230": 3, "240": 1, "241": 1, "242": 1, "250": 1, "280": 2, "281": 2, "283": 1 },
+    "business_on_site": ["283"]
+  }
 }

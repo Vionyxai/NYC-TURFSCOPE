@@ -21,6 +21,14 @@
     "page_size": 50000,
     "verify": true
   },
+  "li_parcels": {
+    "note": "NYS ITS Tax Parcel Centroid Points: the statewide assessment roll, one point per property. Used for Nassau/Suffolk walk lists. Only address and building fields are requested — never owner names or mailing addresses. Year built, sq ft and heating fuel are only filled in where the town assessor reports them (parts of Suffolk).",
+    "url": "https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcel_Centroid_Points/MapServer/0/query",
+    "counties": { "059": "Nassau", "103": "Suffolk" },
+    "fields": ["OBJECTID", "SWIS_PRINT_KEY_ID", "PARCEL_ADDR", "LOC_ZIP", "CITYTOWN_NAME", "PROP_CLASS", "YR_BLT", "SQFT_LIVING", "FUEL_TYPE_DESC", "HEAT_TYPE_DESC"],
+    "page_size": 1000,
+    "parallel": 4
+  },
   "business_licenses": {
     "url": "https://data.cityofnewyork.us/resource/w7w3-xahh.json",
     "note": "NYC DCWP licensed businesses. Only active Premises licenses (a business at a location) are used, never Individual licenses, and only the business category is kept: no names, phone numbers or license numbers.",

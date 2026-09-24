@@ -49,6 +49,12 @@ select pg_temp.fails($q$insert into knocks (client_id,bbl,tract,status,rep_id) v
 select pg_temp.fails($q$insert into knocks (client_id,bbl,tract,status) values (gen_random_uuid(),'4012345680','36081019400','maybe')$q$, 'bad status');
 select pg_temp.fails($q$insert into knocks (client_id,bbl,tract,status,followup) values (gen_random_uuid(),'4012345680','36081019400','come_back','call me at 555')$q$, 'free-text followup');
 select pg_temp.fails($q$insert into knocks (client_id,bbl,tract,status) values (gen_random_uuid(),'12','36081019400','booked')$q$, 'bad bbl');
+select pg_temp.fails($q$insert into knocks (client_id,bbl,tract,status) values (gen_random_uuid(),'4012345678''; drop table knocks;--','36081019400','booked')$q$, 'junk lot id');
+-- Long Island parcel IDs (002_long_island_ids.sql)
+insert into knocks (client_id,bbl,tract,address,status) values (gen_random_uuid(),'472089 0100-012.000-0001-005.000','36103158506','57 SUNSET AV','booked');
+insert into notes (client_id,tract,bbl,body) values (gen_random_uuid(),'36103158506','472089 0100-012.000-0001-005.000','Oil tank in the back yard');
+delete from knocks where tract = '36103158506';
+delete from notes where tract = '36103158506';
 select pg_temp.fails($q$update knocks set status='booked'$q$, 'update');
 select pg_temp.fails('truncate knocks', 'truncate');
 select pg_temp.fails($q$update reps set is_admin = true where name = 'Matt'$q$, 'self-promote');

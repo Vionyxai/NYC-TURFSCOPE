@@ -10,7 +10,8 @@ import { pre1980Codes } from '../m1-ingest/acs.js';
 import { plutoTractGeoid } from '../m1-ingest/pluto.js';
 import { isDac, detectDacFields, parseRelationship } from '../m1-ingest/dac.js';
 import { incomeBand, dacFor2020, lotUtility, lotScore, ownerAgeShares, sizeBand, homeAgeBand, lotBusiness } from '../m2-score/score.js';
-import { addrKey, compareLots } from '../m4-walklists/build.js';
+import { addrKey, compareLots, packWalk, unpackWalk, tractLocator } from '../m4-walklists/build.js';
+import { fuelKey, parcelToLot } from '../m1-ingest/li_parcels.js';
 import { pointInFeatureCollection, shareInside } from '../lib/geo.js';
 import { checkSupabase, buildAppConfig } from '../scripts/app-config.js';
 import vm from 'node:vm';
@@ -98,10 +99,45 @@ t('business at a home', () => {
   assert.equal(lotBusiness({ cls: 'B2', comarea: 600 }, []), 'Store/office on site');
   assert.equal(lotBusiness({ cls: 'A1', comarea: 0 }, undefined), null);
 });
+t('Long Island parcels: fuel words, home types, never owner data', () => {
+  assert.equal(fuelKey('Oil'), 'oil');
+  assert.equal(fuelKey('Gas'), 'gas');
+  assert.equal(fuelKey('Propane/LPG'), 'propane');
+  assert.equal(fuelKey('Unknown'), null);
+  assert.equal(fuelKey(null), null);
+  const classes = readCfg('scoring.json').li_property_classes;
+  const rec = { SWIS_PRINT_KEY_ID: '472089 0100-012.000-0001-005.000', PARCEL_ADDR: ' 57  SUNSET AV ', LOC_ZIP: '11701', CITYTOWN_NAME: 'Babylon',
+    PROP_CLASS: '220', YR_BLT: 1952, SQFT_LIVING: 1640.4, FUEL_TYPE_DESC: 'Oil', HEAT_TYPE_DESC: 'Hot wtr/stm', PRIMARY_OWNER: 'SHOULD NOT APPEAR', MAIL_ADDR: 'NOPE' };
+  const lot = parcelToLot(rec, { x: -73.425113, y: 40.688404 }, classes);
+  assert.deepEqual({ ...lot }, { id: '472089 0100-012.000-0001-005.000', address: '57 SUNSET AV', zip: '11701', town: 'Babylon', cls: '220', units: 2,
+    year: 1952, sqft: 1640, fuel: 'oil', heat: 'Hot wtr/stm', biz: false, lat: 40.688404, lon: -73.425113 });
+  assert.ok(!JSON.stringify(lot).includes('SHOULD NOT') && !JSON.stringify(lot).includes('NOPE'));
+  assert.equal(parcelToLot({ ...rec, PROP_CLASS: '270' }, { x: -73.4, y: 40.7 }, classes), null);   // mobile home: skipped
+  assert.equal(parcelToLot({ ...rec, PARCEL_ADDR: '' }, { x: -73.4, y: 40.7 }, classes), null);     // no address: skipped
+  assert.equal(parcelToLot({ ...rec, PROP_CLASS: '283' }, { x: -73.4, y: 40.7 }, classes).biz, true);
+  const sqlCfg = readCfg('sources.json').li_parcels.fields;
+  assert.ok(!sqlCfg.some((f) => /OWNER|MAIL/.test(f)), 'owner and mailing fields are never requested');
+});
+t('walk-list files: compact format round-trips', () => {
+  const rows = [{ address: '1 A ST', zip: '11375', units: 2, rental: true, biz: null, fuel: 'oil', lat: 40.123456789, lon: -73.987654321, score: 80 },
+                { address: '3 A ST', units: 1, rental: false, lat: 40.1, lon: -73.9, score: 70 }];
+  const back = unpackWalk(JSON.parse(JSON.stringify(packWalk(rows))));
+  assert.equal(back[0].rental, true);
+  assert.equal(back[1].rental, false);
+  assert.equal(back[0].fuel, 'oil');
+  assert.equal(back[0].lat, 40.12346);
+  assert.equal(back[1].fuel, null);
+  assert.deepEqual(unpackWalk([{ address: 'old' }]), [{ address: 'old' }]);   // old files still read
+  const find = tractLocator([{ type: 'Feature', properties: { geoid: 'X' }, geometry: { type: 'Polygon', coordinates: [[[-73.5, 40.6], [-73.4, 40.6], [-73.4, 40.7], [-73.5, 40.7], [-73.5, 40.6]]] } }]);
+  assert.equal(find(-73.45, 40.65).geoid, 'X');
+  assert.equal(find(-73.2, 40.65), null);
+});
 t('lot score bounds', () => {
   const c = readCfg('scoring.json').lot;
   assert.equal(lotScore({ units: 1, year: 1950 }, 95, c), 100);
   assert.equal(lotScore({ units: 4, year: 2005 }, 5, c), 0);
+  assert.equal(lotScore({ units: 1, year: 2005, fuel: 'oil' }, 50, c), 70);  // +10 small, +10 oil on record
+  assert.equal(lotScore({ units: 1, year: 2005, fuel: 'gas' }, 50, c), 60);
 });
 t('Queens address walk order', () => {
   assert.deepEqual(addrKey('123-45 88 AVENUE'), { street: '88 AVENUE', side: 1, num: 1230045 });
@@ -198,6 +234,12 @@ lots.push(lot(T.queens, '1 BIG TOWER', '11375', 40, 1965, -73.80, 40.72)); // 5+
 for (let i = 0; i < 20; i++) lots.push(lot(T.rock, `${200 + i} BEACH 90 STREET`, '11693', 2, 1925, -73.80, 40.59));
 lots[1].cls = 'S1'; // one-family with a store
 fs.writeFileSync(path.join(RAW, 'pluto_lots.json'), JSON.stringify(lots));
+// Long Island homes from the state roll: two in the Nassau tract (one oil), one outside every tract.
+fs.writeFileSync(path.join(RAW, 'li_parcels.json'), JSON.stringify([
+  { id: 'LI-1', address: '12 ELM ST', zip: '11758', town: 'Oyster Bay', cls: '210', units: 1, year: 1955, sqft: 1500, fuel: 'oil', heat: 'Hot air', biz: false, lat: 40.70, lon: -73.60 },
+  { id: 'LI-2', address: '14 ELM ST', zip: '11758', town: 'Oyster Bay', cls: '220', units: 2, year: null, sqft: null, fuel: null, heat: null, biz: false, lat: 40.701, lon: -73.592 },
+  { id: 'LI-3', address: '9 FAR RD', zip: '11901', town: 'Riverhead', cls: '210', units: 1, year: null, sqft: null, fuel: null, heat: null, biz: false, lat: 40.95, lon: -72.66 },
+]));
 fs.writeFileSync(path.join(RAW, 'business_by_bbl.json'), JSON.stringify({ '103 88 AVENUE': ['Home Improvement Contractor'] }));
 // Villages with their own electric utility: one covers the whole Suffolk tract, one a quarter of Nassau's.
 const vbox = (x0, y0, x1, y1) => ({ type: 'Polygon', coordinates: [[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]] });
@@ -290,7 +332,7 @@ t('summary carries scoring weights for the map card', () => {
   assert.deepEqual(summary.weights, readCfg('scoring.json').weights);
 });
 t('walk lists: 1–4 units only, ordered, CSV written', () => {
-  const q = JSON.parse(fs.readFileSync(path.join(OUT, 'walklists', `${T.queens}.json`), 'utf8'));
+  const q = unpackWalk(JSON.parse(fs.readFileSync(path.join(OUT, 'walklists', `${T.queens}.json`), 'utf8')));
   assert.equal(q.length, 30);
   assert.ok(!q.some((r) => r.units >= 5));
   assert.equal(q[0].address, '100 88 AVENUE'); // even side first
@@ -305,6 +347,18 @@ t('walk lists: 1–4 units only, ordered, CSV written', () => {
   const idx = JSON.parse(fs.readFileSync(path.join(OUT, 'walklists', 'index.json'), 'utf8'));
   assert.equal(idx[T.rock], 20);
   assert.ok(fs.readFileSync(path.join(EXP, 'walklists_all.csv'), 'utf8').startsWith('tract,address'));
+});
+t('Long Island walk list from the state roll: placed by location, oil on record first-class', () => {
+  const idx = JSON.parse(fs.readFileSync(path.join(OUT, 'walklists', 'index.json'), 'utf8'));
+  assert.equal(idx[T.nassau], 2);                         // the Riverhead house is outside every fixture tract
+  const n = unpackWalk(JSON.parse(fs.readFileSync(path.join(OUT, 'walklists', `${T.nassau}.json`), 'utf8')));
+  assert.deepEqual(n.map((r) => r.address), ['12 ELM ST', '14 ELM ST']);
+  assert.equal(n[0].fuel, 'oil');
+  assert.equal(n[0].bbl, 'LI-1');
+  assert.equal(n[0].heat, 'Hot air');
+  assert.equal(n[1].rental, true);                        // two-family
+  assert.equal(n[1].utility, 'muni');                     // inside the fixture's Freeport village box
+  assert.equal(n[0].score - n[1].score >= 10, true);      // oil on record + pre-1980 lift the first house
 });
 
 fs.rmSync(tmp, { recursive: true, force: true });
