@@ -48,6 +48,15 @@ Two files control scope:
 - On phone: list view, a map link per address, CSV download; distance to each home from your live location and a Nearest sort that re-sorts as you walk; the house size target filters lots by their own square footage
 - Office copy: `exports/walklists_all.csv`
 
+**Knock tracking** (Supabase, `supabase/`)
+- Team: Issac, Matt, Cody, Gio (admin) in `config/team.json` and the `reps` table
+- Tap a house on a walk list → No answer / Come back (+ when: after 5pm, weekend, owner not home, wants info first) / Not interested / Interested / Booked; undo for 6 s from the toast, later from the house sheet
+- Every knock is stamped with the rep; the team sees each other's so nobody double-knocks; "Hide done" hides Booked / Not interested
+- Offline first: knocks save on the phone and sync when signal returns; a retry never double-saves (client-generated id)
+- Tract cards show team progress; the account sheet shows today's scoreboard; the walk list CSV includes status, rep, time
+- Security is in the database (RLS), not the app: logged-out or non-team logins see nothing; reps add knocks only as themselves, can't edit history, undo only their own; the admin can undo anyone's
+- iPhone first: add to home screen (full screen, green pin icon), 16px inputs, 56px knock buttons, Apple Maps walking directions, screen stays awake while location tracking
+
 ## 3. Data sources
 
 | Layer | Source | Notes |

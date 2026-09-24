@@ -13,6 +13,8 @@ npm run score       # m2: data/raw → m3-map/data/tracts.geojson + summary.json
 npm run walklists   # m4: NYC lot walk lists → m3-map/data/walklists/ + exports/
 npm run pipeline    # all three in order
 npm run dev         # serve the map at http://localhost:3000
+npm run app-config  # config/supabase.json + team.json → m3-map/data/app.json (knock tracking on/off)
+npm run test:sql    # Supabase migration + RLS security tests on a throwaway local Postgres
 ```
 
 Keys go in `.env` (see `.env.example`). `CENSUS_API_KEY` is required (the Census data API rejects keyless requests); `NYC_APP_TOKEN` is optional. Node doesn't read `.env` on its own, so either export the variables in the shell or run with `node --env-file=.env` (Node 20.6+).
@@ -25,7 +27,9 @@ Keys go in `.env` (see `.env.example`). `CENSUS_API_KEY` is required (the Census
 - **Never hardcode rebate dollar amounts in the UI.** They change. Reference notes live in `config/utilities.json` with `last_verified`.
 - **Keep scoring pure.** `m2-score/score.js` has no I/O. Add a test in `test/run.js` for any scoring change.
 - **Mobile first.** Every map change must work one-handed on a phone. Test at 390px wide.
-- **Don't store personal data.** Walk lists are addresses and building facts only. Don't add owner names or phone numbers.
+- **Don't store personal data.** Walk lists are addresses and building facts only. Don't add owner names or phone numbers. Knocks are keyed by BBL with preset statuses/follow-ups: no free-text notes.
+- **iPhone first.** The team runs this as a home-screen app in iPhone Safari. Inputs ≥ 16px (smaller zooms the page), tap targets ≥ 44px, respect safe areas, test at 375px (SE) and 393px (iPhone 15).
+- **Team + knocks.** `config/team.json` (reps, statuses, follow-ups) must match `supabase/001_knock_tracking.sql`; `npm test` checks. Schema changes go in a new numbered SQL file in `supabase/` with tests in `supabase/tests/rls_test.sql`. The app only ever gets the publishable key; never the service_role/secret key.
 
 ## First live run — verify these (they couldn't be checked when the repo was generated)
 
@@ -56,7 +60,7 @@ Report what you changed and why after the first run.
 2. Tune `config/scoring.json` from real knock results (Giovani will supply)
 3. Phase 2: set `areas.json → active_phase: 2` (Brooklyn, Manhattan, Bronx, southern Westchester). Suffolk moved into phase 1 so all PSEG LI territory is covered.
 4. Nassau/Suffolk block-group scoring (ACS supports it; TIGERweb has a block group layer)
-5. Knock tracking: Supabase table keyed by BBL (status: knocked / not home / booked / no), synced from the walk list view
+5. ~~Knock tracking~~ built: `supabase/` (SQL + setup guide), `m3-map/knocks.js`. Needs the Supabase project URL + publishable key in `config/supabase.json`.
 6. `m5-freshness/` n8n jobs (see its README)
 
 ## Glossary

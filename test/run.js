@@ -12,6 +12,9 @@ import { isDac, detectDacFields, parseRelationship } from '../m1-ingest/dac.js';
 import { incomeBand, dacFor2020, lotUtility, lotScore, ownerAgeShares, sizeBand, homeAgeBand, lotBusiness } from '../m2-score/score.js';
 import { addrKey, compareLots } from '../m4-walklists/build.js';
 import { pointInFeatureCollection, shareInside } from '../lib/geo.js';
+import { checkSupabase, buildAppConfig } from '../scripts/app-config.js';
+import vm from 'node:vm';
+import { fakeSupabase, memoryStorage } from './fake-supabase.js';
 
 let passed = 0;
 const t = (name, fn) => { fn(); passed++; console.log('  ✓', name); };
@@ -132,6 +135,32 @@ t('share of a polygon inside another', () => {
   assert.equal(shareInside(box(0, 0, 1, 1), box(-1, -1, 2, 2)), 1);
   assert.equal(shareInside(box(0, 0, 1, 1), box(0.5, 0, 2, 1)), 0.5);
   assert.equal(shareInside(box(0, 0, 1, 1), box(5, 5, 6, 6)), 0);
+});
+
+t('Supabase SQL matches config/team.json (reps, statuses, follow-ups)', () => {
+  const sql = fs.readFileSync(path.join(ROOT, 'supabase', '001_knock_tracking.sql'), 'utf8');
+  const team = readCfg('team.json');
+  const seeded = [...sql.match(/insert into public\.reps \(name, is_admin\) values (.+);/)[1].matchAll(/\('([^']+)', (true|false)\)/g)]
+    .map(([, name, admin]) => ({ name, admin: admin === 'true' }));
+  assert.deepEqual(seeded, team.reps);
+  assert.deepEqual(team.reps.map((r) => r.name), ['Issac', 'Matt', 'Cody', 'Gio']);
+  const list = (col) => [...sql.match(new RegExp(`${col} in \\(([^)]+)\\)`))[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  assert.deepEqual(list('status'), team.knock_statuses.map((x) => x.key));
+  assert.deepEqual(list('followup'), team.followups.map((x) => x.key));
+});
+t('app config: publishable key accepted, secret keys refused', () => {
+  const team = readCfg('team.json');
+  const jwt = (role) => `eyJhbGciOiJIUzI1NiJ9.${Buffer.from(JSON.stringify({ role })).toString('base64url')}.sig`;
+  assert.equal(checkSupabase({ url: '', anon_key: '' }).ok, false);
+  assert.equal(checkSupabase({ url: 'https://abcd1234.supabase.co/', anon_key: 'sb_publishable_xyz' }).url, 'https://abcd1234.supabase.co');
+  assert.equal(checkSupabase({ url: 'https://abcd1234.supabase.co', anon_key: jwt('anon') }).ok, true);
+  assert.equal(checkSupabase({ url: 'https://abcd1234.supabase.co', anon_key: jwt('service_role') }).secret, true);
+  assert.equal(checkSupabase({ url: 'https://abcd1234.supabase.co', anon_key: 'sb_secret_abc' }).secret, true);
+  assert.equal(checkSupabase({ url: 'http://evil.example.com', anon_key: 'sb_publishable_x' }).ok, false);
+  const app = buildAppConfig({ url: 'https://abcd1234.supabase.co', anon_key: 'sb_publishable_x' }, team);
+  assert.equal(app.supabase.key, 'sb_publishable_x');
+  assert.equal(app.statuses.length, 5);
+  assert.equal(buildAppConfig({}, team).supabase, null);
 });
 
 // ---------- end-to-end on fixtures ----------
@@ -274,4 +303,128 @@ t('walk lists: 1–4 units only, ordered, CSV written', () => {
 });
 
 fs.rmSync(tmp, { recursive: true, force: true });
+
+// ---------- knock tracking (m3-map/knocks.js) against a fake Supabase ----------
+console.log('knocks');
+const at = async (name, fn) => { await fn(); passed++; console.log('  ✓', name); };
+const ctx = {};
+vm.runInNewContext(fs.readFileSync(path.join(ROOT, 'm3-map', 'knocks.js'), 'utf8'), { window: ctx });
+const team = readCfg('team.json');
+const makeTeam = () => fakeSupabase({
+  users: { 'gio@x.com': 'pw-gio', 'matt@x.com': 'pw-matt', 'stranger@x.com': 'pw-s' },
+  reps: [
+    { id: 1, name: 'Issac', email: null, is_admin: false },
+    { id: 2, name: 'Matt', email: 'matt@x.com', is_admin: false },
+    { id: 3, name: 'Cody', email: null, is_admin: false },
+    { id: 4, name: 'Gio', email: 'Gio@x.com', is_admin: true },
+  ],
+  statuses: team.knock_statuses.map((s) => s.key),
+});
+let clock = Date.parse('2026-09-24T15:00:00Z');
+let ids = 0;
+const app = (sb, storage) => ctx.TurfKnocks.createKnocks({
+  supabase: { url: 'https://abcd1234.supabase.co', key: 'sb_publishable_x' },
+  storage, fetch: sb.fetch, now: () => clock, uuid: () => `00000000-0000-4000-8000-${String(++ids).padStart(12, '0')}`,
+});
+const TR = '36081019400';
+
+await at('not set up → disabled, no network calls', async () => {
+  const k = ctx.TurfKnocks.createKnocks({ supabase: null, storage: memoryStorage(), fetch: () => { throw new Error('no'); }, uuid: () => 'x' });
+  assert.equal(k.enabled, false);
+  assert.equal(k.signedIn(), false);
+});
+await at('sign in: wrong password refused, right one confirms the rep', async () => {
+  const sb = makeTeam(); const k = app(sb, memoryStorage());
+  await assert.rejects(k.signIn('gio@x.com', 'nope'), /Invalid login/);
+  const me = await k.signIn(' gio@x.com ', 'pw-gio');
+  assert.deepEqual({ ...me }, { name: 'Gio', is_admin: true });
+});
+await at('login that is not on the team cannot record', async () => {
+  const sb = makeTeam(); const k = app(sb, memoryStorage());
+  assert.equal(await k.signIn('stranger@x.com', 'pw-s'), null);
+  assert.throws(() => k.record('4012345678', TR, 'booked'), /Sign in/);
+});
+await at('knock saves to the database and shows as latest', async () => {
+  const sb = makeTeam(); const k = app(sb, memoryStorage());
+  await k.signIn('matt@x.com', 'pw-matt');
+  k.record('4012345678', TR, 'come_back', 'after_5pm');
+  await k.flush();
+  assert.equal(sb.knocks.length, 1);
+  assert.equal(sb.knocks[0].followup, 'after_5pm');
+  assert.equal(k.pendingCount(), 0);
+  assert.equal(k.latest('4012345678').status, 'come_back');
+  assert.equal(k.latest('4012345678').pending, false);
+});
+await at('no signal: knock waits on the phone, survives a reload, syncs later', async () => {
+  const sb = makeTeam(); const storage = memoryStorage(); const k = app(sb, storage);
+  await k.signIn('matt@x.com', 'pw-matt');
+  sb.state.offline = true;
+  k.record('4012345678', TR, 'booked');
+  await k.flush();
+  assert.equal(k.pendingCount(), 1);
+  assert.equal(k.latest('4012345678').pending, true);
+  const again = app(sb, storage);                         // phone closed the app and reopened it
+  assert.equal(again.pendingCount(), 1);
+  assert.equal(again.latest('4012345678').status, 'booked');
+  sb.state.offline = false;
+  await again.flush();
+  assert.equal(again.pendingCount(), 0);
+  assert.equal(sb.knocks.length, 1);
+});
+await at('signal drops after the save: retry does not double-save', async () => {
+  const sb = makeTeam(); const k = app(sb, memoryStorage());
+  await k.signIn('matt@x.com', 'pw-matt');
+  sb.state.loseResponses = 1;                             // saved, but the phone never hears back
+  k.record('4012345678', TR, 'interested');
+  await k.flush();                                        // so it sends again
+  assert.equal(sb.state.calls.filter((c) => c.startsWith('POST /rest/v1/knocks')).length, 2);
+  assert.equal(k.pendingCount(), 0);
+  assert.equal(sb.knocks.length, 1);                      // still only one row
+});
+await at('undo: unsent knock never reaches the server; saved knock is deleted', async () => {
+  const sb = makeTeam(); const k = app(sb, memoryStorage());
+  await k.signIn('matt@x.com', 'pw-matt');
+  sb.state.offline = true;
+  k.record('4012345678', TR, 'no_answer');
+  await k.undo('4012345678');
+  sb.state.offline = false;
+  await k.flush();
+  assert.equal(sb.knocks.length, 0);
+  k.record('4012345679', TR, 'booked');
+  await k.flush();
+  assert.equal(sb.knocks.length, 1);
+  await k.undo('4012345679');
+  assert.equal(sb.knocks.length, 0);
+  assert.equal(k.latest('4012345679'), null);
+});
+await at("team sync: Gio sees Matt's knock with his name; newest wins", async () => {
+  const sb = makeTeam();
+  const matt = app(sb, memoryStorage()); await matt.signIn('matt@x.com', 'pw-matt');
+  matt.record('4012345678', TR, 'no_answer'); await matt.flush();
+  clock += 60000;
+  matt.record('4012345678', TR, 'booked'); await matt.flush();
+  const gio = app(sb, memoryStorage()); await gio.signIn('gio@x.com', 'pw-gio');
+  assert.equal(await gio.loadTract(TR), 1);
+  assert.equal(gio.latest('4012345678').status, 'booked');
+  assert.equal(gio.latest('4012345678').rep, 'Matt');
+  assert.equal(gio.latest('4012345678').mine, false);
+  assert.equal((await gio.tractProgress(TR)).booked, 1);
+});
+await at('expired login refreshes itself; sign-out blocked while knocks are unsynced', async () => {
+  const sb = makeTeam(); const storage = memoryStorage(); const k = app(sb, storage);
+  await k.signIn('matt@x.com', 'pw-matt');
+  const tok = JSON.parse(storage.getItem('ts.session')).access_token;
+  sb.state.expire.add(tok);
+  assert.equal(await k.loadTract(TR), 0);
+  assert.notEqual(JSON.parse(storage.getItem('ts.session')).access_token, tok);
+  sb.state.offline = true;
+  k.record('4012345678', TR, 'booked');
+  await assert.rejects(k.signOut(), /haven't synced/);
+  sb.state.offline = false;
+  await k.flush();
+  await k.signOut();
+  assert.equal(k.signedIn(), false);
+  assert.equal(storage.getItem('ts.session'), null);
+});
+
 console.log(`\n${passed} checks passed`);

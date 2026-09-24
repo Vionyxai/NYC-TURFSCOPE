@@ -1,0 +1,5 @@
+{
+  "_readme": "Supabase project for knock tracking. Paste the Project URL and the publishable (anon) key from Supabase → Project Settings → API, then run: npm run app-config (and commit). The anon key is meant to be public: the database's row-level security only lets the four reps' logins read or write knocks. Never put the service_role / secret key here.",
+  "url": "",
+  "anon_key": ""
+}

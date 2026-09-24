@@ -4,6 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>TurfScope NYC</title>
+<!-- iPhone: Share → Add to Home Screen runs this full screen like an app -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="TurfScope">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="format-detection" content="telephone=no">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111318" media="(prefers-color-scheme: dark)">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
   :root {
@@ -15,6 +26,10 @@
             --accent: #f3f4f6; --accent-fg: #111318; --shadow: 0 -8px 24px rgba(0,0,0,.5); }
   }
   * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { overscroll-behavior: none; }
+  button, a, .item, label { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  input { font-size: 16px; } /* smaller than 16px makes iPhone zoom in on tap */
   html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg);
     font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
   #app { position: fixed; inset: 0; display: flex; flex-direction: column; }
@@ -80,7 +95,32 @@
   .walkbar { padding: 8px 12px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .walkbar .meta { flex: 1; min-width: 120px; }
   .item .d { font-size: 12px; color: var(--muted); text-align: right; min-width: 52px; }
-  .item .d a { display: block; margin-top: 2px; }
+  .item .d a { display: block; margin-top: 2px; padding: 4px 0; }
+  .panel .list { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  .item[data-w] { cursor: pointer; min-height: 56px; }
+  .kn { display: block; font-size: 12px; font-weight: 600; margin-top: 2px; }
+  .acct { margin-left: 4px; }
+  .acct.warn { border-color: #b45309; color: #b45309; }
+  #acctSheet, #knockSheet { z-index: 1300; max-height: 85%; }
+  .field { display: block; margin: 10px 0; font-size: 13px; color: var(--muted); }
+  .field input { display: block; width: 100%; margin-top: 4px; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--chip); color: var(--fg); font: inherit; font-size: 16px; }
+  .err { color: #b91c1c; font-size: 13px; min-height: 18px; margin-top: 6px; }
+  .kgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0 4px; }
+  .kgrid button { min-height: 56px; border: 0; border-radius: 12px; color: #fff; font: inherit; font-weight: 700; font-size: 16px; }
+  .kgrid button.wide { grid-column: 1 / -1; }
+  .kgrid button.cur { outline: 3px solid var(--fg); outline-offset: 2px; }
+  .fchips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  .fchips .chip { padding: 10px 14px; font-size: 15px; }
+  .score-table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 8px 0; }
+  .score-table th, .score-table td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+  .score-table td.n, .score-table th.n { text-align: right; }
+  .toast { position: fixed; left: 12px; right: 12px; bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); z-index: 1400;
+    background: var(--fg); color: var(--bg); border-radius: 12px; padding: 12px 14px; display: none; align-items: center; gap: 10px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.3); font-size: 15px; }
+  .toast.show { display: flex; }
+  .toast span { flex: 1; }
+  .toast button { border: 0; background: transparent; color: var(--bg); font: inherit; font-weight: 700; padding: 8px; text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -89,6 +129,7 @@
     <div class="row" style="margin-bottom:8px">
       <div class="title">TurfScope NYC</div>
       <div class="meta" id="meta">Loading…</div>
+      <button class="chip acct" id="acctBtn" style="display:none">Sign in</button>
     </div>
     <div class="row" style="margin-bottom:6px">
       <div class="seg" id="utilSeg">
@@ -127,6 +168,10 @@
   <button class="btn" id="targetDone">Show tracts</button>
 </div>
 
+<div class="sheet" id="acctSheet"><div class="grab"></div><div id="acctBody"></div></div>
+<div class="sheet" id="knockSheet"><div class="grab"></div><div id="knockBody"></div></div>
+<div class="toast" id="toast"><span id="toastText"></span><button id="toastUndo">Undo</button></div>
+
 <div class="panel" id="panel">
   <header>
     <button class="chip" id="panelBack">‹ Back</button>
@@ -138,12 +183,14 @@
       <button data-s="walk" class="on">Walk order</button>
       <button data-s="near">Nearest</button>
     </div>
+    <button class="chip" id="hideDone" style="display:none">Hide done</button>
     <div class="meta" id="walkMeta"></div>
   </div>
   <div class="list" id="panelList"></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="knocks.js"></script>
 <script>
 (async function () {
   if (typeof L === 'undefined') { document.getElementById('meta').textContent = 'Map failed to load — check your connection and refresh'; return; }
@@ -172,12 +219,14 @@
     return;
   }
   try { walkIndex = await fetch('data/walklists/index.json').then((r) => (r.ok ? r.json() : {})); } catch (e) { walkIndex = {}; }
+  let appCfg = null;
+  try { appCfg = await fetch('data/app.json').then((r) => (r.ok ? r.json() : null)); } catch (e) { appCfg = null; }
 
   const UT = summary.utilities || {};
   const utColor = (u) => (UT[u] && UT[u].color) || '#6b7280';
   const utLabel = (u) => (UT[u] && UT[u].label) || u;
 
-  document.getElementById('meta').textContent = `${summary.tracts} tracts · ACS ${summary.acs_year}`;
+  document.getElementById('meta').textContent = `${summary.tracts} tracts`;
   document.getElementById('legendBar').innerHTML = COLORS.map((c) => `<span style="background:${c}"></span>`).join('');
   document.getElementById('legendUt').innerHTML = Object.keys(UT)
     .map((u) => `<span><i style="border-color:${utColor(u)}"></i>${esc(UT[u].label)}</span>`).join('');
@@ -195,6 +244,27 @@
     for (const k of state.ages) { mine += p.owner_age[k] || 0; avg += TG.owner_age_avg[k] || 0; }
     return mine >= avg - 0.005;
   }
+
+  // ---------- Knock tracking (Supabase) ----------
+  let storage;
+  try { storage = window.localStorage; storage.getItem('ts.test'); } catch (e) {
+    const m = new Map(); storage = { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, v), removeItem: (k) => m.delete(k) };
+  }
+  const uuid = () => (crypto.randomUUID ? crypto.randomUUID()
+    : ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, (c) => (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)));
+  const K = window.TurfKnocks ? window.TurfKnocks.createKnocks({ supabase: appCfg && appCfg.supabase, storage, fetch: window.fetch.bind(window), uuid })
+    : { enabled: false, signedIn: () => false, me: () => null, latest: () => null, pendingCount: () => 0, onChange: () => {} };
+  const STATUSES = (appCfg && appCfg.statuses) || [];
+  const STATUS = Object.fromEntries(STATUSES.map((x) => [x.key, x]));
+  const FOLLOW = Object.fromEntries(((appCfg && appCfg.followups) || []).map((x) => [x.key, x.label]));
+  const canKnock = () => K.enabled && K.signedIn() && !!K.me();
+  const fmtWhen = (iso) => {
+    const d = new Date(iso); if (isNaN(d)) return '';
+    return d.toDateString() === new Date().toDateString()
+      ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+  const standalone = () => window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
 
   const passes = (p) =>
     (state.util === 'all' || p.utility === state.util) &&
@@ -256,6 +326,7 @@
       ${p.muni ? `<div class="warn"><b>${esc(p.muni.label)}</b> — a village-run electric utility, not PSEG LI — covers ${pct(p.muni.share)} of this tract. Homes there may not qualify for PSEG LI heat pump rebates. Check before knocking.</div>` : ''}
       ${p.estimated_from ? `<div class="meta">No Census survey data for this tract — numbers estimated from nearby tract ${esc(p.estimated_from.slice(5))}.</div>` : ''}
       ${p.gaps && p.gaps.length ? `<div class="meta">Missing data: ${esc(p.gaps.join(', '))}</div>` : ''}
+      ${hasList && canKnock() ? '<div class="meta" id="progLine" style="margin-top:8px">Team progress: loading…</div>' : ''}
       ${hasList
         ? `<button class="btn" id="walkBtn">Walk list · ${hasList} homes</button>`
         : `<div class="meta" style="margin-top:8px">No address-level list for this tract yet.</div>`}
@@ -264,12 +335,18 @@
     openedAt = Date.now();
     document.getElementById('closeSheet').onclick = () => { openedAt = 0; closeSheet(); };
     if (hasList) document.getElementById('walkBtn').onclick = () => openWalk(p);
+    if (hasList && canKnock()) {
+      K.tractProgress(p.geoid).then((g) => {
+        const el = document.getElementById('progLine');
+        if (el) el.textContent = `Team progress: ${g.knocked} of ${hasList} knocked · ${g.booked} booked · ${g.interested || 0} interested · ${g.come_back || 0} come back`;
+      }).catch(() => { const el = document.getElementById('progLine'); if (el) el.textContent = 'Team progress: offline'; });
+    }
   }
   let openedAt = 0;
   function closeSheet() { if (Date.now() - openedAt < 300) return; document.getElementById('sheet').classList.remove('open'); }
 
   // ---------- Walk list ----------
-  const walk = { rows: [], shown: [], sort: 'walk', sortedAt: null };
+  const walk = { rows: [], shown: [], sort: 'walk', sortedAt: null, hideDone: false, geoid: null };
   const metres = (a, b) => {
     const k = Math.cos((a[0] * Math.PI) / 180);
     return Math.hypot((b[0] - a[0]) * 111320, (b[1] - a[1]) * 111320 * k);
@@ -285,10 +362,19 @@
     return t;
   }
 
+  const knockLine = (r) => {
+    const k = K.latest(r.bbl);
+    if (!k || !STATUS[k.status]) return '';
+    const st = STATUS[k.status];
+    const extra = [k.followup && FOLLOW[k.followup], k.rep, fmtWhen(k.knocked_at), k.pending && 'waiting to sync', k.failed && 'NOT SAVED'].filter(Boolean);
+    return `<span class="kn" style="color:${st.color}">● ${esc(st.label)} · ${esc(extra.join(' · '))}</span>`;
+  };
+  const isDone = (r) => { const k = K.latest(r.bbl); return !!(k && STATUS[k.status] && STATUS[k.status].done); };
+
   function renderWalk() {
     const list = document.getElementById('panelList');
     const here = loc.last;
-    walk.shown = walk.rows.filter(lotPasses);
+    walk.shown = walk.rows.filter((r) => lotPasses(r) && !(walk.hideDone && isDone(r)));
     if (walk.sort === 'near' && here) {
       walk.shown.sort((a, b) => metres(here, [a.lat, a.lon]) - metres(here, [b.lat, b.lon]));
       walk.sortedAt = here;
@@ -297,12 +383,13 @@
     const picks = [...[...state.homes].map(homeLabel), ...[...state.sizes].map(sizeLabel)];
     const sizeNote = picks.length ? ` · ${picks.join(' / ')}` : '';
     const sortNote = walk.sort === 'near' ? (here ? ' · nearest first' : ' · finding you…') : '';
-    document.getElementById('walkMeta').textContent = `${walk.shown.length} of ${walk.rows.length} homes${sizeNote}${sortNote}`;
+    const knocked = K.enabled && K.signedIn() ? walk.rows.filter((r) => K.latest(r.bbl)).length : null;
+    document.getElementById('walkMeta').textContent = `${walk.shown.length} of ${walk.rows.length} homes${knocked != null ? ` · ${knocked} knocked` : ''}${sizeNote}${sortNote}`;
     list.innerHTML = walk.shown.map((r, i) => `
-      <div class="item">
+      <div class="item" data-w="${i}">
         <div class="s" style="color:${colorFor(r.score)}">${r.score}</div>
-        <div class="a">${esc(r.address)}${tags(r)}<small>${r.units} unit${r.units > 1 ? 's' : ''} · built ${r.year || '—'}${r.sqft ? ` · ${Math.round(r.sqft).toLocaleString()} sq ft` : ''} · ${esc(r.cls)} · ${esc(r.zip)}</small></div>
-        <div class="d"><span data-d="${i}">${here ? fmtDist(metres(here, [r.lat, r.lon])) : ''}</span><a href="https://maps.google.com/?q=${r.lat},${r.lon}" target="_blank" rel="noopener">Map</a></div>
+        <div class="a">${esc(r.address)}${tags(r)}<small>${r.units} unit${r.units > 1 ? 's' : ''} · built ${r.year || '—'}${r.sqft ? ` · ${Math.round(r.sqft).toLocaleString()} sq ft` : ''} · ${esc(r.cls)} · ${esc(r.zip)}</small>${knockLine(r)}</div>
+        <div class="d"><span data-d="${i}">${here ? fmtDist(metres(here, [r.lat, r.lon])) : ''}</span><a href="https://maps.apple.com/?daddr=${r.lat},${r.lon}&dirflg=w" target="_blank" rel="noopener">Walk</a></div>
       </div>`).join('') || `<div class="empty">${walk.rows.length ? 'No homes match the home age / house size you picked.' : 'No homes in this tract.'}</div>`;
   }
 
@@ -323,18 +410,28 @@
     document.getElementById('panel').classList.add('open');
     try {
       walk.rows = await fetch(`data/walklists/${p.geoid}.json`).then((r) => r.json());
+      walk.geoid = p.geoid;
       currentList = { geoid: p.geoid, rows: walk.rows };
       document.getElementById('csvBtn').style.display = '';
       document.getElementById('walkBar').style.display = '';
+      document.getElementById('hideDone').style.display = K.enabled ? '' : 'none';
       renderWalk();
+      syncTract();
     } catch (e) {
       list.innerHTML = '<div class="empty">Could not load walk list.</div>';
     }
   }
 
+  // Pull the team's latest knocks for the open walk list.
+  function syncTract() {
+    if (!canKnock() || !walkOpen() || !walk.geoid) return;
+    K.loadTract(walk.geoid).then(renderWalk).catch(() => { /* offline: keep what we have */ });
+  }
+
   function openBest() {
     const top = data.features.filter((f) => passes(f.properties)).slice(0, 25); // already sorted by score
     currentList = null;
+    walk.geoid = null;
     document.getElementById('csvBtn').style.display = 'none';
     document.getElementById('walkBar').style.display = 'none';
     document.getElementById('panelTitle').textContent = 'Best turf';
@@ -361,7 +458,9 @@
     if (!currentList) return;
     const cols = ['address', 'zip', 'units', 'rental', 'biz', 'year', 'age', 'sqft', 'size', 'cls', 'block', 'bbl', 'utility', 'score', 'lat', 'lon'];
     const q = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-    const csv = [cols.join(','), ...currentList.rows.map((r) => cols.map((c) => q(r[c])).join(','))].join('\n');
+    if (K.enabled && K.signedIn()) cols.push('status', 'followup', 'rep', 'knocked_at');
+    const val = (r, c) => { const k = K.latest(r.bbl); return ['status', 'followup', 'rep', 'knocked_at'].includes(c) ? (k ? k[c] : '') : r[c]; };
+    const csv = [cols.join(','), ...currentList.rows.map((r) => cols.map((c) => q(val(r, c))).join(','))].join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     a.download = `walklist_${currentList.geoid}.csv`;
@@ -415,6 +514,180 @@
   document.getElementById('panelBack').onclick = () => document.getElementById('panel').classList.remove('open');
   document.getElementById('csvBtn').onclick = downloadCSV;
   map.on('click', closeSheet);
+
+  // ---------- Account ----------
+  const acctBtn = document.getElementById('acctBtn');
+  function paintAcct() {
+    if (!K.enabled) { acctBtn.style.display = 'none'; return; }
+    acctBtn.style.display = '';
+    const n = K.pendingCount();
+    const me = K.me();
+    acctBtn.textContent = !K.signedIn() ? 'Sign in' : me ? `${me.name}${n ? ` · ${n} to sync` : ''}` : 'Not on team';
+    acctBtn.classList.toggle('warn', K.signedIn() && (!me || n > 0));
+  }
+  const closeAll = () => ['acctSheet', 'knockSheet'].forEach((id) => document.getElementById(id).classList.remove('open'));
+  function openAcct() {
+    const body = document.getElementById('acctBody');
+    const me = K.me();
+    const tip = standalone() ? '' : '<div class="meta" style="margin-top:10px">Tip: in Safari tap Share → <b>Add to Home Screen</b> to use TurfScope full screen like an app.</div>';
+    if (!K.signedIn()) {
+      body.innerHTML = `
+        <div class="title">Sign in</div>
+        <div class="meta">Use the email and password Gio set up for you.</div>
+        <form id="loginForm" autocomplete="on">
+          <label class="field">Email<input id="loginEmail" type="email" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" required></label>
+          <label class="field">Password<input id="loginPw" type="password" autocomplete="current-password" required></label>
+          <div class="err" id="loginErr"></div>
+          <button class="btn" type="submit" id="loginBtn">Sign in</button>
+        </form>
+        <button class="btn ghost" id="acctClose">Close</button>${tip}`;
+      document.getElementById('loginForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById('loginBtn'); const err = document.getElementById('loginErr');
+        btn.disabled = true; btn.textContent = 'Signing in…'; err.textContent = '';
+        try {
+          const me = await K.signIn(document.getElementById('loginEmail').value, document.getElementById('loginPw').value);
+          if (!me) { openAcct(); return; }
+          closeAll(); toast(`Signed in as ${me.name}`); syncTract();
+        } catch (ex) {
+          err.textContent = !ex.status ? 'No signal. Try again when you have service.' : /invalid/i.test(ex.message) ? 'Wrong email or password.' : ex.message;
+          btn.disabled = false; btn.textContent = 'Sign in';
+        }
+      };
+    } else if (!me) {
+      body.innerHTML = `
+        <div class="title">Not on the team list</div>
+        <p>You're signed in as <b>${esc(K.email())}</b>, but that email isn't linked to a rep yet. Ask Gio to add it in Supabase (see supabase/README.md, step 4).</p>
+        <button class="btn" id="acctRetry">Check again</button>
+        <button class="btn ghost" id="acctOut">Sign out</button>`;
+      document.getElementById('acctRetry').onclick = async () => { try { await K.loadMe(); } catch (e) { /* offline */ } openAcct(); };
+    } else {
+      const n = K.pendingCount();
+      body.innerHTML = `
+        <div class="row"><div class="title">${esc(me.name)}${me.is_admin ? ' <span class="badge">admin</span>' : ''}</div></div>
+        <div class="meta">${esc(K.email())}</div>
+        <div class="warn" style="margin-top:10px">${n ? `<b>${n} knock${n === 1 ? '' : 's'} waiting to sync.</b> They're saved on this phone and go up as soon as you have signal.` : 'All knocks synced.'}</div>
+        ${n ? '<button class="btn" id="acctSync">Sync now</button>' : ''}
+        <h4 style="margin:14px 0 4px">Today</h4>
+        <div id="scoreBox" class="meta">Loading…</div>
+        <button class="btn ghost" id="acctOut">Sign out</button>
+        <button class="btn ghost" id="acctClose">Close</button>${tip}`;
+      if (n) document.getElementById('acctSync').onclick = async () => { await K.flush(); openAcct(); };
+      K.repStats().then((rows) => {
+        const box = document.getElementById('scoreBox'); if (!box) return;
+        box.outerHTML = `<table class="score-table"><tr><th>Rep</th><th class="n">Knocks</th><th class="n">Booked</th><th class="n">All-time booked</th></tr>
+          ${rows.map((r) => `<tr><td>${esc(r.rep)}</td><td class="n">${r.knocks_today}</td><td class="n">${r.booked_today}</td><td class="n">${r.booked}</td></tr>`).join('')}</table>`;
+      }).catch(() => { const box = document.getElementById('scoreBox'); if (box) box.textContent = 'Offline — scoreboard shows when you have signal.'; });
+    }
+    const out = document.getElementById('acctOut');
+    if (out) out.onclick = async () => { try { await K.signOut(); closeAll(); renderIfWalk(); } catch (ex) { toast(ex.message); } };
+    const close = document.getElementById('acctClose');
+    if (close) close.onclick = closeAll;
+    document.getElementById('sheet').classList.remove('open');
+    document.getElementById('targetSheet').classList.remove('open');
+    document.getElementById('acctSheet').classList.add('open');
+  }
+  acctBtn.onclick = openAcct;
+
+  // ---------- Knock a door ----------
+  let toastTimer = null, toastUndo = null;
+  function toast(text, undoFn) {
+    const t = document.getElementById('toast');
+    document.getElementById('toastText').textContent = text;
+    document.getElementById('toastUndo').style.display = undoFn ? '' : 'none';
+    toastUndo = undoFn || null;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), undoFn ? 6000 : 2500);
+  }
+  document.getElementById('toastUndo').onclick = async () => {
+    const fn = toastUndo; document.getElementById('toast').classList.remove('show');
+    if (fn) { try { await fn(); } catch (ex) { toast(`Couldn't undo: ${ex.message}`); } }
+  };
+
+  function openKnock(r) {
+    const body = document.getElementById('knockBody');
+    const k = K.latest(r.bbl);
+    const me = K.me();
+    const head = `<div class="title">${esc(r.address)}</div>
+      <div class="meta">${r.units} unit${r.units > 1 ? 's' : ''} · built ${r.year || '—'} · ${esc(r.zip)}</div>
+      ${k && STATUS[k.status] ? `<div class="kn" style="color:${STATUS[k.status].color};margin-top:6px">Last: ${esc(STATUS[k.status].label)}${k.followup ? ` (${esc(FOLLOW[k.followup] || '')})` : ''} · ${esc(k.rep || '')} · ${esc(fmtWhen(k.knocked_at))}</div>` : ''}`;
+    if (!canKnock()) {
+      body.innerHTML = `${head}<p class="meta">Sign in to record knocks.</p><button class="btn" id="kSignIn">Sign in</button><button class="btn ghost" id="kClose">Close</button>`;
+      document.getElementById('kSignIn').onclick = openAcct;
+    } else {
+      const canUndo = k && (k.rep === me.name || me.is_admin);
+      body.innerHTML = `${head}
+        <div class="kgrid">${STATUSES.map((st, i) => `<button data-st="${esc(st.key)}" class="${i === STATUSES.length - 1 && STATUSES.length % 2 ? 'wide' : ''}${k && k.status === st.key ? ' cur' : ''}" style="background:${st.color}">${esc(st.label)}</button>`).join('')}</div>
+        <div id="fBox" style="display:none">
+          <div class="meta">When should we come back? (optional)</div>
+          <div class="fchips">${Object.entries(FOLLOW).map(([key, label]) => `<button class="chip" data-f="${esc(key)}">${esc(label)}</button>`).join('')}</div>
+          <button class="btn" id="fSave">Save come back</button>
+        </div>
+        ${canUndo ? '<button class="btn ghost" id="kUndo">Undo last knock</button>' : ''}
+        <button class="btn ghost" id="kClose">Close</button>`;
+      let follow = null;
+      const save = (status, followup) => {
+        try {
+          K.record(r.bbl, walk.geoid, status, followup);
+          closeAll();
+          toast(`${STATUS[status].label} · ${r.address}`, () => K.undo(r.bbl));
+        } catch (ex) { toast(ex.message); }
+      };
+      body.querySelectorAll('[data-st]').forEach((b) => (b.onclick = () => {
+        if (b.dataset.st === 'come_back' && Object.keys(FOLLOW).length) {
+          document.getElementById('fBox').style.display = '';
+          body.querySelectorAll('[data-st]').forEach((x) => x.classList.toggle('cur', x === b));
+          return;
+        }
+        save(b.dataset.st, null);
+      }));
+      body.querySelectorAll('[data-f]').forEach((b) => (b.onclick = () => {
+        follow = follow === b.dataset.f ? null : b.dataset.f;
+        body.querySelectorAll('[data-f]').forEach((x) => x.classList.toggle('on', x.dataset.f === follow));
+      }));
+      document.getElementById('fSave').onclick = () => save('come_back', follow);
+      if (canUndo) document.getElementById('kUndo').onclick = async () => {
+        try { await K.undo(r.bbl); closeAll(); toast('Knock removed'); } catch (ex) { toast(`Couldn't undo: ${ex.message}`); }
+      };
+    }
+    document.getElementById('kClose').onclick = closeAll;
+    document.getElementById('knockSheet').classList.add('open');
+  }
+
+  document.getElementById('panelList').addEventListener('click', (e) => {
+    if (e.target.closest('a')) return;                       // the Walk link opens Apple Maps
+    const item = e.target.closest('.item[data-w]');
+    if (!item || currentList == null || !K.enabled) return;  // knock tracking not set up yet
+    const r = walk.shown[Number(item.dataset.w)];
+    if (r) openKnock(r);
+  });
+  document.getElementById('hideDone').onclick = (e) => {
+    walk.hideDone = !walk.hideDone;
+    e.target.classList.toggle('on', walk.hideDone);
+    renderWalk();
+  };
+
+  // Keep the screen fresh: redraw on changes, sync when signal returns, pull teammates' knocks.
+  let redrawQueued = false;
+  const renderIfWalk = () => { if (walkOpen()) renderWalk(); };
+  K.onChange(() => {
+    paintAcct();
+    if (redrawQueued) return;
+    redrawQueued = true;
+    requestAnimationFrame(() => { redrawQueued = false; renderIfWalk(); });
+  });
+  window.addEventListener('online', () => { K.flush && K.flush(); syncTract(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') { if (K.flush) K.flush(); syncTract(); }
+  });
+  setInterval(() => {
+    if (document.visibilityState !== 'visible') return;
+    if (K.pendingCount() && K.flush) K.flush();
+    syncTract();
+  }, ((appCfg && appCfg.refresh_seconds) || 60) * 1000);
+  paintAcct();
+  if (K.enabled && K.signedIn()) { K.loadMe().catch(() => {}); if (K.flush) K.flush(); }
 
   // ---------- Live location ----------
   // Uses the phone's GPS through the browser. The position never leaves the phone:
@@ -496,16 +769,27 @@
     showHere(`<div class="meta">${msg}</div>`);
     if (err.code === 1) stopTracking(false);
   }
+  let wake = null;
+  async function keepAwake(on) {
+    try {
+      if (on && 'wakeLock' in navigator && document.visibilityState === 'visible') wake = await navigator.wakeLock.request('screen');
+      else if (!on && wake) { await wake.release(); wake = null; }
+    } catch (e) { wake = null; }
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && loc.watchId != null) keepAwake(true); });
+
   function startTracking() {
     if (!('geolocation' in navigator)) { showHere('<div class="meta">This browser can\'t share location.</div>'); return; }
     loc.follow = true; loc.first = true;
     showHere('<div class="meta">Finding you…</div>');
     loc.watchId = navigator.geolocation.watchPosition(onPos, onErr, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
+    keepAwake(true);
     paintBtn();
   }
   function stopTracking(clear = true) {
     if (loc.watchId != null) navigator.geolocation.clearWatch(loc.watchId);
     loc.watchId = null; loc.follow = false; loc.tract = null; loc.last = null;
+    keepAwake(false);
     if (loc.dot) { loc.dot.remove(); loc.ring.remove(); loc.dot = loc.ring = null; }
     if (clear) showHere('');
     paintBtn();
