@@ -40,6 +40,15 @@ export function parcelToLot(a, g, classes) {
   };
 }
 
+// The server upper-cases statistic names ("lo" comes back as "LO"), so read them either way.
+export function statRange(j) {
+  const a = (j && j.features && j.features[0] && j.features[0].attributes) || {};
+  const get = (k) => a[k] ?? a[k.toUpperCase()];
+  const lo = Number(get('lo')), hi = Number(get('hi'));
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) throw new Error(`NYS parcels: no OBJECTID range in ${JSON.stringify(a)}`);
+  return { lo, hi };
+}
+
 async function query(src, where, extra = {}) {
   const params = new URLSearchParams({ where, f: 'json', ...extra });
   const j = await fetchJSON(`${src.url}?${params}`);
@@ -64,7 +73,7 @@ export async function runLiParcels() {
         { statisticType: 'max', onStatisticField: 'OBJECTID', outStatisticFieldName: 'hi' },
       ]),
     });
-    const { lo, hi } = st.features[0].attributes;
+    const { lo, hi } = statRange(st);
     const n = src.parallel;
     const step = Math.ceil((hi - lo + 1) / n);
     let kept = 0, seen = 0;
@@ -86,6 +95,7 @@ export async function runLiParcels() {
         last = feats[feats.length - 1].attributes.OBJECTID;
       }
     }));
+    if (!kept) throw new Error(`NYS parcels: 0 homes for ${c.name} (${seen} parcels read) — check the service and property classes`);
     const withFuel = lots.filter((l) => l.fuel).length;
     log(`LI parcels · ${c.name}: ${kept} homes kept of ${seen} residential parcels (fuel on record so far: ${withFuel})`);
   }

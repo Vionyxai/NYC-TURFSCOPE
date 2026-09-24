@@ -11,7 +11,7 @@ import { plutoTractGeoid } from '../m1-ingest/pluto.js';
 import { isDac, detectDacFields, parseRelationship } from '../m1-ingest/dac.js';
 import { incomeBand, dacFor2020, lotUtility, lotScore, ownerAgeShares, sizeBand, homeAgeBand, lotBusiness } from '../m2-score/score.js';
 import { addrKey, compareLots, packWalk, unpackWalk, tractLocator } from '../m4-walklists/build.js';
-import { fuelKey, parcelToLot } from '../m1-ingest/li_parcels.js';
+import { fuelKey, parcelToLot, statRange } from '../m1-ingest/li_parcels.js';
 import { pointInFeatureCollection, shareInside } from '../lib/geo.js';
 import { checkSupabase, buildAppConfig } from '../scripts/app-config.js';
 import vm from 'node:vm';
@@ -115,6 +115,9 @@ t('Long Island parcels: fuel words, home types, never owner data', () => {
   assert.equal(parcelToLot({ ...rec, PROP_CLASS: '270' }, { x: -73.4, y: 40.7 }, classes), null);   // mobile home: skipped
   assert.equal(parcelToLot({ ...rec, PARCEL_ADDR: '' }, { x: -73.4, y: 40.7 }, classes), null);     // no address: skipped
   assert.equal(parcelToLot({ ...rec, PROP_CLASS: '283' }, { x: -73.4, y: 40.7 }, classes).biz, true);
+  assert.deepEqual(statRange({ features: [{ attributes: { LO: 5, HI: 900 } }] }), { lo: 5, hi: 900 });   // server upper-cases names
+  assert.deepEqual(statRange({ features: [{ attributes: { lo: 1, hi: 2 } }] }), { lo: 1, hi: 2 });
+  assert.throws(() => statRange({ features: [{ attributes: {} }] }), /no OBJECTID range/);
   const sqlCfg = readCfg('sources.json').li_parcels.fields;
   assert.ok(!sqlCfg.some((f) => /OWNER|MAIL/.test(f)), 'owner and mailing fields are never requested');
 });
