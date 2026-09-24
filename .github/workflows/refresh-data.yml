@@ -17,6 +17,24 @@ jobs:
         with:
           node-version-file: .nvmrc
       - run: npm test
+      - name: TEMP probe Long Island address + parcel sources
+        run: |
+          G=https://gisservices.its.ny.gov/arcgis/rest/services
+          echo "== service list"; curl -s "$G?f=json" | grep -o '"name":"[^"]*"' | grep -i -E 'address|parcel|sam' | head -20
+          for svc in NYS_Address_Points NYS_Tax_Parcels_Public; do
+            for kind in FeatureServer MapServer; do
+              echo "== $svc/$kind layers"; curl -s "$G/$svc/$kind?f=json" | grep -o '"id":[0-9]*,"name":"[^"]*"' | head -10
+            done
+            echo "== $svc layer 0 fields"; curl -s "$G/$svc/FeatureServer/0?f=json" | grep -o '"name":"[^"]*","type":"[^"]*"' | head -60 | tr '\n' ' '; echo
+            echo "== $svc sample"; curl -s "$G/$svc/FeatureServer/0/query?where=1%3D1&outFields=*&returnGeometry=false&resultRecordCount=1&f=json" | head -c 1500; echo
+          done
+          for c in Nassau Suffolk; do
+            for f in COUNTY COUNTY_NAME CountyName County; do
+              r=$(curl -s "$G/NYS_Address_Points/FeatureServer/0/query?where=$f%3D%27$c%27&returnCountOnly=true&f=json"); echo "addr $c ($f): $r" | head -c 200; echo
+              r=$(curl -s "$G/NYS_Tax_Parcels_Public/FeatureServer/0/query?where=$f%3D%27$c%27&returnCountOnly=true&f=json"); echo "parcel $c ($f): $r" | head -c 200; echo
+            done
+          done
+          exit 1
       - name: Run pipeline
         run: npm run pipeline
         env:
