@@ -25,8 +25,11 @@ export function buildAppConfig(sb, team) {
   return {
     supabase: c.ok ? { url: c.url, key: c.key } : null,
     supabase_status: c.ok ? 'ready' : c.reason,
+    reps: team.reps.map(({ name, color }) => ({ name, color })),
     statuses: team.knock_statuses,
     followups: team.followups,
+    turf_statuses: team.turf_statuses,
+    note_max: team.note_max,
     refresh_seconds: team.refresh_seconds,
   };
 }

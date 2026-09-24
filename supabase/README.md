@@ -4,17 +4,21 @@ About 15 minutes, all in the browser. You only do this once.
 
 ## How it's set up (plain version)
 
-- **`reps` table:** one row per rep: Issac, Matt, Cody, Gio. Gio is the admin. Each row gets that rep's login email.
-- **`knocks` table:** every tap on a door. Each knock is automatically stamped with the rep who made it, so every rep has their own trail of knocks inside one table. That's easier to report on than a separate table per rep, and adding a 5th rep is just one more row.
-- **Row-level security (RLS):** the database's own rules.
-  - Logged out: sees nothing.
-  - Logged in but not on the reps list: sees nothing.
-  - Reps see the whole team's knocks, so nobody double-knocks.
-  - A rep can only add knocks under their own name and undo their own. Gio can undo anyone's.
-  - Nobody can edit an old knock. A new tap just becomes the latest status.
-- **No personal data:** houses are stored by their NYC lot ID (BBL) only. No homeowner names, no phone numbers, no free-text notes.
+- **`reps`:** one row per rep: Issac, Matt, Cody, Gio (Gio is the admin). Each row gets that rep's login email, and that's how a login becomes "Matt".
+- **`knocks`:** every tap on a door (house status), stamped with the rep who made it.
+- **`turf_log`:** every change to an area's status: **Claimed / Finished / Avoid / Open**, stamped with the rep. This is how you see who picked which turf.
+- **`notes`:** team notes, on a **house**, on a **whole tract (area)**, or as a **pin** dropped on the map.
+- One table per kind of thing, with every row stamped with its rep. Each rep has their own trail (their "My stuff" in the app), and reports across the team stay simple. Adding a 5th rep is just one more row.
 
-All of this is in [`001_knock_tracking.sql`](001_knock_tracking.sql) and tested by `npm run test:sql`.
+**Who can do what (row-level security, RLS):**
+- Logged out, or logged in but not on the reps list: sees nothing.
+- **Every rep sees everything the team does:** all house statuses, who claimed which turf, all notes and pins, with names and times.
+- **Every rep can change any house's status and any area's status,** no matter who set it before. The newest change wins, and it's recorded under whoever made it.
+- Nobody can post as someone else, and nobody can edit history. A rep can undo or delete their **own** entries; Gio (admin) can remove anyone's.
+
+**Notes and privacy:** notes are free text up to 280 characters so the team can coordinate ("Big dog, use side gate", "Block party Saturday, skip until Monday"). The database **refuses any note with a phone number or email address**. Don't write homeowners' names either; the app reminds reps.
+
+All of this is in [`001_team_tracking.sql`](001_team_tracking.sql) and tested by `npm run test:sql`.
 
 ## Step 1: create the project
 1. Go to supabase.com → **New project**. Name: `turfscope`. Region: **East US (North Virginia)**. Save the database password somewhere safe; the app never needs it.
@@ -22,7 +26,7 @@ All of this is in [`001_knock_tracking.sql`](001_knock_tracking.sql) and tested 
 
 ## Step 2: build the tables and security rules
 1. Left menu → **SQL Editor** → **New query**.
-2. Paste the **entire** contents of `supabase/001_knock_tracking.sql` and press **Run**. You should see "Success. No rows returned."
+2. Paste the **entire** contents of `supabase/001_team_tracking.sql` and press **Run**. You should see "Success. No rows returned."
 3. Left menu → **Table Editor**. You should see `reps` with Issac, Matt, Cody and Gio.
 
 ## Step 3: lock down sign-ups and create the 4 logins
@@ -63,14 +67,18 @@ The emails must match the logins from step 3 exactly (upper/lower case doesn't m
 Heads-up: the home-screen app and Safari keep separate logins. Sign in inside the home-screen app.
 
 ## Day to day
-- **Tap a house → pick a status.** "Come back" asks when (after 5pm, weekend, and so on). The black bar at the bottom has **Undo** for 6 seconds, and "Undo last knock" is in the house's sheet after that.
-- **No signal?** Keep knocking. Knocks save on the phone ("waiting to sync") and go up by themselves when signal comes back. The name button top right shows "Matt · 3 to sync" until then. Signing out is blocked until everything has synced, so nothing gets lost.
-- **Hide done** hides Booked and Not interested houses. No answer, Come back and Interested stay visible.
-- **Scoreboard:** tap your name top right to see today's knocks and bookings per rep.
-- **Team progress:** tract cards show "142 of 628 knocked · 6 booked".
+- **Pick turf:** tap a tract → **Claim**. The map outlines it in your color with your name (Issac purple, Matt teal, Cody pink, Gio brown). **Finished** makes it dashed; **Avoid** makes it dark dotted; **Open** releases it. Any rep can change any area. "Undo last area change" takes back your own.
+- **Knock:** open the walk list → tap a house → pick a status. "Come back" asks when. The black bar has **Undo** for 6 seconds; later use "Undo last knock" in the house's sheet.
+- **Notes:** in a house's sheet (house notes), on a tract card (area notes), or tap the **pin** button (top right, under locate) to drop a pin at your location or anywhere you tap. Everyone sees them right away.
+- **My stuff:** tap your name, top right. It shows your claimed turf, your come-backs and interested houses (tap to jump there) and the team's numbers today. The **Mine** button shows only your turf on the map.
+- **No signal?** Keep going. Knocks, claims and notes save on the phone ("waiting to sync") and go up by themselves when signal returns. Signing out is blocked until everything has synced.
+- **Hide done** in a walk list hides Booked and Not interested houses.
+- Teammates' changes show up within about a minute, or right away when you reopen the app.
 
 ## Office side (Supabase dashboard)
-- **All knocks:** Table Editor → `knocks`, or `latest_knocks` for one row per house. **Export → CSV**.
+- **All knocks:** Table Editor → `knocks`, or `latest_knocks` for one row per house (with address). **Export → CSV**.
+- **Who has which turf:** `turf_status`. Full history: `turf_log`.
+- **All notes and pins:** `team_notes`.
 - **Scoreboard:** Table Editor → `rep_stats`.
 - **Someone leaves:** `update public.reps set active = false where name = 'Cody';` removes their access right away and keeps their knock history.
 - **Add a rep:** `insert into public.reps (name, email) values ('New Rep', 'new@example.com');`, then create their login (step 3). Also add them to `config/team.json` so the files stay in sync (`npm test` checks this).

@@ -1,4 +1,4 @@
--- Checks every security rule in 001_knock_tracking.sql. Test-only: run by scripts/test-sql.sh
+-- Checks every security rule in 001_team_tracking.sql. Test-only: run by scripts/test-sql.sh
 -- against a throwaway local Postgres, never against the real Supabase project.
 \set ON_ERROR_STOP 1
 \o /dev/null
@@ -29,6 +29,8 @@ end $$;
 set role anon;
 select pg_temp.fails('select 1 from knocks', 'anon read knocks');
 select pg_temp.fails('select 1 from latest_knocks', 'anon read latest_knocks');
+select pg_temp.fails('select 1 from team_notes', 'anon read notes');
+select pg_temp.fails('select 1 from turf_status', 'anon read turf');
 reset role;
 
 -- Logged in but not on the team: nothing
@@ -91,6 +93,55 @@ do $$ begin
 end $$;
 reset role;
 
+-- ---------- Turf: who picked which tract; anyone can change any area's status ----------
+select pg_temp.as_user('matt@x.com');
+insert into turf_log (client_id,tract,status,set_at) values ('33333333-3333-3333-3333-333333333333','36081019400','claimed', now() - interval '1 hour');
+select pg_temp.fails($q$insert into turf_log (client_id,tract,status,rep_id) values (gen_random_uuid(),'36081019400','claimed',(select id from reps where name='Gio'))$q$, 'claim as someone else');
+select pg_temp.fails($q$insert into turf_log (client_id,tract,status) values (gen_random_uuid(),'36081019400','mine')$q$, 'bad turf status');
+select pg_temp.fails($q$update turf_log set status='open'$q$, 'edit turf history');
+do $$ begin
+  assert (select rep from turf_status where tract = '36081019400') = 'Matt', 'Matt claimed it';
+  assert (select turf_claimed from rep_stats where rep = 'Matt') = 1, 'rep_stats turf_claimed';
+end $$;
+reset role;
+select pg_temp.as_user('issac@x.com');
+insert into turf_log (client_id,tract,status) values (gen_random_uuid(),'36081019400','finished');   -- Issac can change Matt's area
+delete from turf_log where client_id = '33333333-3333-3333-3333-333333333333';                       -- but can't erase Matt's claim
+do $$ begin
+  assert (select status from turf_status where tract = '36081019400') = 'finished', 'any rep can change area status';
+  assert (select rep from turf_status where tract = '36081019400') = 'Issac', 'change credited to Issac';
+  assert (select count(*) from turf_log where client_id = '33333333-3333-3333-3333-333333333333') = 1, 'Issac cannot erase Matt''s claim';
+end $$;
+reset role;
+
+-- ---------- Notes and pins: team-visible, no contact details ----------
+select pg_temp.as_user('matt@x.com');
+insert into notes (client_id,tract,bbl,address,body) values ('44444444-4444-4444-4444-444444444444','36081019400','4012345678','138-04 109 AVENUE','Big dog, use side gate');
+insert into notes (client_id,tract,body) values (gen_random_uuid(),'36081019400','Block party Saturday, skip until Monday');
+insert into notes (client_id,lat,lon,body) values (gen_random_uuid(),40.6870,-73.8071,'No soliciting sign at the corner');
+select pg_temp.fails($q$insert into notes (client_id,tract,body) values (gen_random_uuid(),'36081019400','call her at 718-555-1234')$q$, 'phone number in note');
+select pg_temp.fails($q$insert into notes (client_id,tract,body) values (gen_random_uuid(),'36081019400','call (718) 555 1234')$q$, 'phone number with parens');
+select pg_temp.fails($q$insert into notes (client_id,tract,body) values (gen_random_uuid(),'36081019400','email jo@gmail.com')$q$, 'email in note');
+select pg_temp.fails($q$insert into notes (client_id,tract,body) values (gen_random_uuid(),'36081019400',repeat('x',281))$q$, 'note too long');
+select pg_temp.fails($q$insert into notes (client_id,tract,body) values (gen_random_uuid(),'36081019400','   ')$q$, 'blank note');
+select pg_temp.fails($q$insert into notes (client_id,body) values (gen_random_uuid(),'floating note')$q$, 'note attached to nothing');
+select pg_temp.fails($q$insert into notes (client_id,lat,body) values (gen_random_uuid(),40.7,'half a pin')$q$, 'pin missing lon');
+select pg_temp.fails($q$insert into notes (client_id,tract,body,rep_id) values (gen_random_uuid(),'36081019400','hi',(select id from reps where name='Gio'))$q$, 'note as someone else');
+reset role;
+select pg_temp.as_user('issac@x.com');
+delete from notes where client_id = '44444444-4444-4444-4444-444444444444';
+do $$ begin
+  assert (select count(*) from team_notes) = 3, 'team sees all notes';
+  assert (select rep from team_notes where bbl = '4012345678') = 'Matt', 'note shows who wrote it';
+  assert (select count(*) from team_notes where lat is not null) = 1, 'pins visible';
+  assert (select count(*) from notes where client_id = '44444444-4444-4444-4444-444444444444') = 1, 'Issac cannot delete Matt''s note';
+end $$;
+reset role;
+select pg_temp.as_user('gio@x.com');
+delete from notes where client_id = '44444444-4444-4444-4444-444444444444';
+do $$ begin assert (select count(*) from notes where client_id = '44444444-4444-4444-4444-444444444444') = 0, 'admin removed Matt''s note'; end $$;
+reset role;
+
 -- Someone leaves the team
 update reps set active = false where name = 'Matt';
 select pg_temp.as_user('matt@x.com');
@@ -98,4 +149,4 @@ do $$ begin assert (select count(*) from knocks) = 0, 'inactive rep locked out';
 reset role;
 
 \o
-\echo RLS tests passed: 4 reps, logged-out/stranger blocked, own-name knocks only, no edits, retries safe, undo own, admin override, inactive locked out
+\echo RLS tests passed: 4 reps; logged-out/stranger blocked; knocks, turf and notes posted only as yourself; anyone can change any status; no edits; retries safe; undo own; admin override; no phone/email in notes; inactive locked out

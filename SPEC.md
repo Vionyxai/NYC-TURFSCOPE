@@ -48,7 +48,11 @@ Two files control scope:
 - On phone: list view, a map link per address, CSV download; distance to each home from your live location and a Nearest sort that re-sorts as you walk; the house size target filters lots by their own square footage
 - Office copy: `exports/walklists_all.csv`
 
-**Knock tracking** (Supabase, `supabase/`)
+**Team tracking** (Supabase, `supabase/`)
+- Logins: one Supabase account per rep, matched to the `reps` row by email
+- Turf: any rep can Claim / Finish / Avoid / Open a tract; the map outlines claimed turf in the rep's color with their name; history kept in `turf_log`
+- Notes: free-text team notes (≤ 280 chars) on a house, an area, or as a map pin; the whole team sees them with name and time; phone numbers and emails are refused
+- My stuff: my claimed turf, my come-backs / interested houses, team numbers today; a Mine filter on the map
 - Team: Issac, Matt, Cody, Gio (admin) in `config/team.json` and the `reps` table
 - Tap a house on a walk list → No answer / Come back (+ when: after 5pm, weekend, owner not home, wants info first) / Not interested / Interested / Booked; undo for 6 s from the toast, later from the house sheet
 - Every knock is stamped with the rep; the team sees each other's so nobody double-knocks; "Hide done" hides Booked / Not interested

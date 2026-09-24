@@ -14,9 +14,9 @@ Requires Node 18.17+. No npm install needed — there are zero dependencies.
 
 The pipeline needs a free Census API key (https://api.census.gov/data/key_signup.html). Put it in `.env` as `CENSUS_API_KEY` for local runs, and add it as a repository secret named `CENSUS_API_KEY` (Settings → Secrets and variables → Actions) for the GitHub refresh.
 
-## Knock tracking (4-man team)
+## Team tracking (4-man team)
 
-Reps sign in on their iPhones, tap a house on a walk list, and pick No answer / Come back / Not interested / Interested / Booked. Knocks save on the phone first (works with no signal), sync to Supabase, and the whole team sees them. Setup: [`supabase/README.md`](supabase/README.md). The team (Issac, Matt, Cody, Gio) lives in `config/team.json`.
+Reps sign in on their iPhones, claim turf (the map shows who has what), knock houses (No answer / Come back / Not interested / Interested / Booked), and leave notes and map pins for each other. Everything saves on the phone first (works with no signal), syncs to Supabase, and the whole team sees it. Setup: [`supabase/README.md`](supabase/README.md). The team (Issac, Matt, Cody, Gio) lives in `config/team.json`.
 
 ## Deploy
 

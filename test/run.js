@@ -138,15 +138,16 @@ t('share of a polygon inside another', () => {
 });
 
 t('Supabase SQL matches config/team.json (reps, statuses, follow-ups)', () => {
-  const sql = fs.readFileSync(path.join(ROOT, 'supabase', '001_knock_tracking.sql'), 'utf8');
+  const sql = fs.readFileSync(path.join(ROOT, 'supabase', '001_team_tracking.sql'), 'utf8');
   const team = readCfg('team.json');
   const seeded = [...sql.match(/insert into public\.reps \(name, is_admin\) values (.+);/)[1].matchAll(/\('([^']+)', (true|false)\)/g)]
     .map(([, name, admin]) => ({ name, admin: admin === 'true' }));
-  assert.deepEqual(seeded, team.reps);
+  assert.deepEqual(seeded, team.reps.map(({ name, admin }) => ({ name, admin })));
   assert.deepEqual(team.reps.map((r) => r.name), ['Issac', 'Matt', 'Cody', 'Gio']);
-  const list = (col) => [...sql.match(new RegExp(`${col} in \\(([^)]+)\\)`))[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
-  assert.deepEqual(list('status'), team.knock_statuses.map((x) => x.key));
-  assert.deepEqual(list('followup'), team.followups.map((x) => x.key));
+  const lists = (col) => [...sql.matchAll(new RegExp(`${col} in \\(([^)]+)\\)`, 'g'))].map((m) => [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]));
+  assert.deepEqual(lists('status'), [team.knock_statuses.map((x) => x.key), team.turf_statuses.map((x) => x.key)]);
+  assert.deepEqual(lists('followup'), [team.followups.map((x) => x.key)]);
+  assert.match(sql, new RegExp(`char_length\\(t\\) <= ${team.note_max}`));
 });
 t('app config: publishable key accepted, secret keys refused', () => {
   const team = readCfg('team.json');
@@ -304,11 +305,11 @@ t('walk lists: 1–4 units only, ordered, CSV written', () => {
 
 fs.rmSync(tmp, { recursive: true, force: true });
 
-// ---------- knock tracking (m3-map/knocks.js) against a fake Supabase ----------
-console.log('knocks');
+// ---------- team sync (m3-map/team.js) against a fake Supabase ----------
+console.log('team');
 const at = async (name, fn) => { await fn(); passed++; console.log('  ✓', name); };
 const ctx = {};
-vm.runInNewContext(fs.readFileSync(path.join(ROOT, 'm3-map', 'knocks.js'), 'utf8'), { window: ctx });
+vm.runInNewContext(fs.readFileSync(path.join(ROOT, 'm3-map', 'team.js'), 'utf8'), { window: ctx });
 const team = readCfg('team.json');
 const makeTeam = () => fakeSupabase({
   users: { 'gio@x.com': 'pw-gio', 'matt@x.com': 'pw-matt', 'stranger@x.com': 'pw-s' },
@@ -322,14 +323,14 @@ const makeTeam = () => fakeSupabase({
 });
 let clock = Date.parse('2026-09-24T15:00:00Z');
 let ids = 0;
-const app = (sb, storage) => ctx.TurfKnocks.createKnocks({
+const app = (sb, storage) => ctx.TurfTeam.createTeam({
   supabase: { url: 'https://abcd1234.supabase.co', key: 'sb_publishable_x' },
   storage, fetch: sb.fetch, now: () => clock, uuid: () => `00000000-0000-4000-8000-${String(++ids).padStart(12, '0')}`,
 });
 const TR = '36081019400';
 
 await at('not set up → disabled, no network calls', async () => {
-  const k = ctx.TurfKnocks.createKnocks({ supabase: null, storage: memoryStorage(), fetch: () => { throw new Error('no'); }, uuid: () => 'x' });
+  const k = ctx.TurfTeam.createTeam({ supabase: null, storage: memoryStorage(), fetch: () => { throw new Error('no'); }, uuid: () => 'x' });
   assert.equal(k.enabled, false);
   assert.equal(k.signedIn(), false);
 });
@@ -425,6 +426,81 @@ await at('expired login refreshes itself; sign-out blocked while knocks are unsy
   await k.signOut();
   assert.equal(k.signedIn(), false);
   assert.equal(storage.getItem('ts.session'), null);
+});
+
+await at('turf: Matt claims, the team sees it, anyone can change it (credited to them)', async () => {
+  const sb = makeTeam();
+  const matt = app(sb, memoryStorage()); await matt.signIn('matt@x.com', 'pw-matt');
+  matt.setTurf(TR, 'claimed'); await matt.flush();
+  const gio = app(sb, memoryStorage()); await gio.signIn('gio@x.com', 'pw-gio');
+  await gio.loadTeam();
+  assert.equal(gio.turf(TR).status, 'claimed');
+  assert.equal(gio.turf(TR).rep, 'Matt');
+  clock += 60000;
+  gio.setTurf(TR, 'finished'); await gio.flush();
+  await matt.loadTeam();
+  assert.equal(matt.turf(TR).status, 'finished');
+  assert.equal(matt.turf(TR).rep, 'Gio');
+  assert.equal(sb.tables.turf_log.length, 2);            // history kept: Matt's claim is still on record
+  await gio.undoTurf(TR);                                 // Gio takes back his change → Matt's claim shows again
+  await gio.loadTeam();
+  assert.equal(gio.turf(TR).rep, 'Matt');
+  assert.equal(gio.turf(TR).status, 'claimed');
+});
+await at('notes: house, area and map pins shared with the team; no phone numbers or emails', async () => {
+  const sb = makeTeam();
+  const matt = app(sb, memoryStorage()); await matt.signIn('matt@x.com', 'pw-matt');
+  assert.throws(() => matt.addNote({ tract: TR, bbl: '4012345678', body: 'call 718-555-1234' }), /phone/);
+  assert.throws(() => matt.addNote({ tract: TR, body: 'jo@gmail.com' }), /email/);
+  assert.throws(() => matt.addNote({ tract: TR, body: '   ' }), /Write something/);
+  assert.throws(() => matt.addNote({ tract: TR, body: 'x'.repeat(281) }), /280/);
+  sb.state.offline = true;                                 // notes work with no signal too
+  matt.addNote({ tract: TR, bbl: '4012345678', address: '138-04 109 AVENUE', body: 'Big dog, use side gate' });
+  matt.addNote({ tract: TR, body: 'Block party Saturday, skip until Monday' });
+  matt.addNote({ tract: TR, lat: 40.687085, lon: -73.807189, body: 'No soliciting sign at the corner' });
+  assert.equal(matt.pendingCount(), 3);
+  assert.equal(matt.notesFor({ bbl: '4012345678' })[0].pending, true);
+  sb.state.offline = false; await matt.flush();
+  assert.equal(sb.tables.notes.length, 3);
+  const gio = app(sb, memoryStorage()); await gio.signIn('gio@x.com', 'pw-gio');
+  await gio.loadTract(TR); await gio.loadTeam();
+  assert.equal(gio.notesFor({ bbl: '4012345678' })[0].body, 'Big dog, use side gate');
+  assert.equal(gio.notesFor({ bbl: '4012345678' })[0].rep, 'Matt');
+  assert.equal(gio.notesFor({ tract: TR }).length, 1);    // area note only, not the house note or the pin
+  assert.equal(gio.houseNotesInTract(TR).length, 1);
+  assert.equal(gio.pins().length, 1);
+  assert.equal(gio.pins()[0].lat, 40.687085);
+  const pinId = matt.pins()[0].client_id;
+  await matt.deleteNote(pinId);
+  await gio.loadTeam();
+  assert.equal(gio.pins().length, 0);
+});
+await at('mixed offline queue (knock, claim, note) syncs in order after a reload', async () => {
+  const sb = makeTeam(); const storage = memoryStorage();
+  const k = app(sb, storage); await k.signIn('matt@x.com', 'pw-matt');
+  sb.state.offline = true;
+  k.setTurf(TR, 'claimed');
+  k.record('4012345678', TR, 'come_back', 'weekend', '138-04 109 AVENUE');
+  k.addNote({ tract: TR, bbl: '4012345678', body: 'Owner works nights' });
+  const again = app(sb, storage);
+  assert.equal(again.pendingCount(), 3);
+  assert.equal(again.turf(TR).pending, true);
+  sb.state.offline = false; await again.flush();
+  assert.equal(again.pendingCount(), 0);
+  assert.deepEqual([sb.tables.turf_log.length, sb.tables.knocks.length, sb.tables.notes.length], [1, 1, 1]);
+  assert.equal(sb.tables.knocks[0].address, '138-04 109 AVENUE');
+  const mine = await again.myFollowups();
+  assert.equal(mine.length, 1);
+  assert.equal(mine[0].followup, 'weekend');
+  const stats = await again.repStats();
+  assert.equal(stats.find((r) => r.rep === 'Matt').turf_claimed, 1);
+});
+await at('note rule in the app matches the database rule', async () => {
+  const cases = { 'call 718-555-1234': 1, 'call (718) 555 1234': 1, '7185551234': 1, 'jo@gmail.com': 1, 'house 138-04, 2 dogs': 0, 'come back after 5:30pm': 0, 'Ring 3 times': 0 };
+  for (const [text, bad] of Object.entries(cases)) assert.equal(!!ctx.TurfTeam.noteProblem(text), !!bad, text);
+  const sql = fs.readFileSync(path.join(ROOT, 'supabase', '001_team_tracking.sql'), 'utf8');
+  assert.ok(sql.includes("t !~ '[0-9]{3}[^0-9A-Za-z]{0,3}[0-9]{3}[^0-9A-Za-z]{0,3}[0-9]{4}'"));
+  assert.ok(fs.readFileSync(path.join(ROOT, 'm3-map', 'team.js'), 'utf8').includes('/[0-9]{3}[^0-9A-Za-z]{0,3}[0-9]{3}[^0-9A-Za-z]{0,3}[0-9]{4}/'));
 });
 
 console.log(`\n${passed} checks passed`);

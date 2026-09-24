@@ -101,7 +101,22 @@
   .kn { display: block; font-size: 12px; font-weight: 600; margin-top: 2px; }
   .acct { margin-left: 4px; }
   .acct.warn { border-color: #b45309; color: #b45309; }
-  #acctSheet, #knockSheet { z-index: 1300; max-height: 85%; }
+  #acctSheet, #knockSheet, #noteSheet { z-index: 1300; max-height: 88%; }
+  textarea.note { display: block; width: 100%; min-height: 76px; margin-top: 6px; padding: 10px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--chip); color: var(--fg); font: inherit; font-size: 16px; resize: vertical; }
+  .notes { margin: 8px 0; }
+  .note-item { padding: 8px 10px; margin: 6px 0; border-radius: 10px; background: var(--chip); font-size: 14px; }
+  .note-item .who { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .note-item button { float: right; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; padding: 4px 6px; text-decoration: underline; }
+  .turfrow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 8px 0; }
+  .turfrow button { min-height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--chip); color: var(--fg); font: inherit; font-size: 13px; font-weight: 600; }
+  .turfrow button.cur { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .section { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .section h4 { margin: 0 0 6px; }
+  .rep-label { background: transparent; border: 0; box-shadow: none; font: 700 11px/1 -apple-system, sans-serif; padding: 3px 6px; border-radius: 6px; color: #fff; white-space: nowrap; }
+  .rep-label::before { display: none; }
+  .mine-list .item { cursor: pointer; }
+  .snip { display: block; font-size: 12px; color: var(--fg); margin-top: 2px; }
   .field { display: block; margin: 10px 0; font-size: 13px; color: var(--muted); }
   .field input { display: block; width: 100%; margin-top: 4px; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
     background: var(--chip); color: var(--fg); font: inherit; font-size: 16px; }
@@ -143,6 +158,7 @@
     </div>
     <div class="row">
       <label class="slider">Min score <input type="range" id="minScore" min="0" max="100" step="5" value="0"><b id="minVal">0</b></label>
+      <button class="chip" id="mineBtn" style="display:none">Mine</button>
       <button class="chip" id="bestBtn">Best turf</button>
     </div>
   </header>
@@ -152,6 +168,7 @@
     <div class="bar" id="legendBar"></div>
     <div style="display:flex;justify-content:space-between"><span>0</span><span>100</span></div>
     <div class="ut" id="legendUt"></div>
+    <div class="ut" id="legendReps"></div>
   </div>
 </div>
 
@@ -170,6 +187,7 @@
 
 <div class="sheet" id="acctSheet"><div class="grab"></div><div id="acctBody"></div></div>
 <div class="sheet" id="knockSheet"><div class="grab"></div><div id="knockBody"></div></div>
+<div class="sheet" id="noteSheet"><div class="grab"></div><div id="noteBody"></div></div>
 <div class="toast" id="toast"><span id="toastText"></span><button id="toastUndo">Undo</button></div>
 
 <div class="panel" id="panel">
@@ -190,7 +208,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="knocks.js"></script>
+<script src="team.js"></script>
 <script>
 (async function () {
   if (typeof L === 'undefined') { document.getElementById('meta').textContent = 'Map failed to load — check your connection and refresh'; return; }
@@ -200,7 +218,8 @@
   const pct = (x) => (x == null ? '—' : Math.round(x * 100) + '%');
   const money = (x) => (x == null ? '—' : '$' + Math.round(x / 1000) + 'k');
 
-  const state = { util: 'all', dac: false, min: 0, incomes: new Set(), homes: new Set(), ages: new Set(), sizes: new Set() };
+  let placingPin = false;                                      // true after "Tap a spot on the map"
+  const state = { util: 'all', dac: false, mine: false, min: 0, incomes: new Set(), homes: new Set(), ages: new Set(), sizes: new Set() };
   let data, summary, walkIndex = {}, layer, currentList = null;
 
   const map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([40.72, -73.75], 11);
@@ -252,8 +271,34 @@
   }
   const uuid = () => (crypto.randomUUID ? crypto.randomUUID()
     : ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, (c) => (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)));
-  const K = window.TurfKnocks ? window.TurfKnocks.createKnocks({ supabase: appCfg && appCfg.supabase, storage, fetch: window.fetch.bind(window), uuid })
-    : { enabled: false, signedIn: () => false, me: () => null, latest: () => null, pendingCount: () => 0, onChange: () => {} };
+  const K = window.TurfTeam ? window.TurfTeam.createTeam({ supabase: appCfg && appCfg.supabase, storage, fetch: window.fetch.bind(window), uuid, noteMax: appCfg && appCfg.note_max })
+    : { enabled: false, signedIn: () => false, me: () => null, latest: () => null, turf: () => null, allTurf: () => new Map(), notesFor: () => [], houseNotesInTract: () => [], pins: () => [], pendingCount: () => 0, onChange: () => {} };
+  const REPCOLOR = Object.fromEntries(((appCfg && appCfg.reps) || []).map((r) => [r.name, r.color]));
+  const repColor = (name) => REPCOLOR[name] || '#374151';
+  const TURF = Object.fromEntries(((appCfg && appCfg.turf_statuses) || []).map((x) => [x.key, x]));
+  const NOTE_MAX = (appCfg && appCfg.note_max) || 280;
+  // Active area status for a tract (an "open" entry means nobody has it).
+  const turfOf = (geoid) => { const t = K.turf(geoid); return t && t.status !== 'open' ? t : null; };
+  const noteWho = (n) => `${esc(n.rep || '')} · ${esc(fmtWhen(n.noted_at))}${n.pending ? ' · waiting to sync' : ''}${n.failed ? ' · NOT SAVED' : ''}`;
+  function noteList(list, emptyText) {
+    const me = K.me();
+    if (!list.length) return emptyText ? `<div class="meta">${emptyText}</div>` : '';
+    return `<div class="notes">${list.map((n) => `<div class="note-item">${(n.mine || (me && me.is_admin)) ? `<button data-del="${esc(n.client_id)}">Delete</button>` : ''}${esc(n.body)}<span class="who">${noteWho(n)}</span></div>`).join('')}</div>`;
+  }
+  // Wires a note box (textarea + Save) and the Delete buttons inside a container.
+  function wireNotes(box, makeNote, after) {
+    box.querySelectorAll('[data-del]').forEach((b) => (b.onclick = async () => {
+      try { await K.deleteNote(b.dataset.del); after(); } catch (ex) { toast(`Couldn't delete: ${ex.message}`); }
+    }));
+    const ta = box.querySelector('textarea.note'), save = box.querySelector('[data-save-note]'), err = box.querySelector('.err');
+    if (!ta || !save) return;
+    save.onclick = () => {
+      try { K.addNote({ ...makeNote(), body: ta.value }); ta.value = ''; if (err) err.textContent = ''; toast('Note shared with the team'); after(); }
+      catch (ex) { if (err) err.textContent = ex.message; }
+    };
+  }
+  const noteBox = (placeholder) => `<textarea class="note" maxlength="${NOTE_MAX}" placeholder="${esc(placeholder)}"></textarea>
+    <div class="err"></div><button class="btn" data-save-note>Save note</button>`;
   const STATUSES = (appCfg && appCfg.statuses) || [];
   const STATUS = Object.fromEntries(STATUSES.map((x) => [x.key, x]));
   const FOLLOW = Object.fromEntries(((appCfg && appCfg.followups) || []).map((x) => [x.key, x.label]));
@@ -273,21 +318,55 @@
     (!state.homes.size || state.homes.has(p.home_age_band)) &&
     (!state.ages.size || ageOK(p)) &&
     (!state.sizes.size || state.sizes.has(p.size_band)) &&
-    p.score >= state.min;
+    p.score >= state.min &&
+    (!state.mine || (turfOf(p.geoid) && turfOf(p.geoid).rep === (K.me() && K.me().name)));
+
+  // Rep-name labels on claimed turf and team pins, redrawn when the team's data changes.
+  const overlay = L.layerGroup().addTo(map);
+  function drawOverlay() {
+    overlay.clearLayers();
+    if (!K.enabled || !K.signedIn()) return;
+    if (map.getZoom() >= 12) {
+      for (const f of data.features) {
+        const t = turfOf(f.properties.geoid);
+        if (!t || !passes(f.properties)) continue;
+        const c = L.geoJSON(f).getBounds().getCenter();
+        const label = `${t.rep}${t.status === 'finished' ? ' ✓' : t.status === 'avoid' ? ' · avoid' : ''}`;
+        L.marker(c, { interactive: false, icon: L.divIcon({ className: '', html: `<span class="rep-label" style="background:${t.status === 'avoid' ? '#111827' : repColor(t.rep)}">${esc(label)}</span>`, iconSize: null }) }).addTo(overlay);
+      }
+    }
+    for (const n of K.pins()) {
+      const m = L.circleMarker([n.lat, n.lon], { radius: 9, weight: 3, color: '#ffffff', fillColor: repColor(n.rep), fillOpacity: 1 });
+      m.on('click', (e) => { L.DomEvent.stopPropagation(e); openPin(n); });
+      m.addTo(overlay);
+    }
+  }
+  map.on('zoomend', () => drawOverlay());
 
   function render() {
     if (layer) layer.remove();
     layer = L.geoJSON(data, {
       filter: (f) => passes(f.properties),
-      style: (f) => ({
-        fillColor: colorFor(f.properties.score), fillOpacity: 0.55,
-        color: utColor(f.properties.utility), weight: 1.2, opacity: 0.9,
+      style: (f) => {
+        const t = turfOf(f.properties.geoid);
+        const base = { fillColor: colorFor(f.properties.score), fillOpacity: 0.55, color: utColor(f.properties.utility), weight: 1.2, opacity: 0.9 };
+        if (!t) return base;
+        // Claimed = solid outline in the rep's color, finished = dashed, avoid = dark dotted and faded.
+        if (t.status === 'avoid') return { ...base, color: '#111827', weight: 3, dashArray: '2 6', fillOpacity: 0.2 };
+        return { ...base, color: repColor(t.rep), weight: 4, dashArray: t.status === 'finished' ? '8 6' : null, fillOpacity: t.status === 'finished' ? 0.3 : 0.55 };
+      },
+      onEachFeature: (f, l) => l.on('click', (e) => {
+        L.DomEvent.stopPropagation(e);
+        if (placingPin) { placingPin = false; openPinEditor(e.latlng.lat, e.latlng.lng); return; }  // dropping a pin, not opening the card
+        openSheet(f.properties);
       }),
-      onEachFeature: (f, l) => l.on('click', (e) => { L.DomEvent.stopPropagation(e); openSheet(f.properties); }),
     }).addTo(map);
+    if (typeof drawOverlay === 'function') drawOverlay();
   }
 
+  let cardOpen = null;                                         // the tract whose card is showing, for live updates
   function openSheet(p) {
+    cardOpen = p;
     const fuel = p.fuel || {};
     const parts = p.parts || {};
     const w = summary.weights || {};
@@ -327,6 +406,7 @@
       ${p.estimated_from ? `<div class="meta">No Census survey data for this tract — numbers estimated from nearby tract ${esc(p.estimated_from.slice(5))}.</div>` : ''}
       ${p.gaps && p.gaps.length ? `<div class="meta">Missing data: ${esc(p.gaps.join(', '))}</div>` : ''}
       ${hasList && canKnock() ? '<div class="meta" id="progLine" style="margin-top:8px">Team progress: loading…</div>' : ''}
+      ${canKnock() ? `<div class="section" id="turfBox"></div><div class="section" id="areaNotes"></div>` : ''}
       ${hasList
         ? `<button class="btn" id="walkBtn">Walk list · ${hasList} homes</button>`
         : `<div class="meta" style="margin-top:8px">No address-level list for this tract yet.</div>`}
@@ -335,6 +415,10 @@
     openedAt = Date.now();
     document.getElementById('closeSheet').onclick = () => { openedAt = 0; closeSheet(); };
     if (hasList) document.getElementById('walkBtn').onclick = () => openWalk(p);
+    if (canKnock()) {
+      paintTractTeam(p);
+      K.loadTract(p.geoid).catch(() => { /* offline: show what we have */ });   // area notes + house statuses; the card repaints on arrival
+    }
     if (hasList && canKnock()) {
       K.tractProgress(p.geoid).then((g) => {
         const el = document.getElementById('progLine');
@@ -342,8 +426,33 @@
       }).catch(() => { const el = document.getElementById('progLine'); if (el) el.textContent = 'Team progress: offline'; });
     }
   }
+  // Who has this area, the buttons to change it, and the team's notes about it.
+  function paintTractTeam(p) {
+    const box = document.getElementById('turfBox'), nb = document.getElementById('areaNotes');
+    if (!box || !nb) return;
+    const t = K.turf(p.geoid);
+    const cur = t ? t.status : 'open';
+    const me = K.me();
+    const who = t && t.status !== 'open'
+      ? `<b style="color:${t.status === 'avoid' ? 'inherit' : repColor(t.rep)}">${esc((TURF[t.status] || {}).label || t.status)}</b> by ${esc(t.rep)} · ${esc(fmtWhen(t.set_at))}${t.pending ? ' · waiting to sync' : ''}`
+      : 'Open — nobody has claimed this area';
+    box.innerHTML = `<h4>Turf</h4><div>${who}</div>
+      <div class="turfrow">${Object.values(TURF).map((x) => `<button data-turf="${esc(x.key)}" class="${cur === x.key ? 'cur' : ''}" title="${esc(x.hint)}">${esc(x.key === 'claimed' && (!t || t.rep !== me.name || cur !== 'claimed') ? 'Claim' : x.label)}</button>`).join('')}</div>
+      ${t && (t.mine || me.is_admin) ? '<button class="btn ghost" id="turfUndo">Undo last area change</button>' : ''}`;
+    box.querySelectorAll('[data-turf]').forEach((b) => (b.onclick = () => {
+      try { K.setTurf(p.geoid, b.dataset.turf); toast(`${(TURF[b.dataset.turf] || {}).label} · tract ${p.geoid.slice(5)}`); paintTractTeam(p); render(); }
+      catch (ex) { toast(ex.message); }
+    }));
+    const u = document.getElementById('turfUndo');
+    if (u) u.onclick = async () => { try { await K.undoTurf(p.geoid); paintTractTeam(p); render(); } catch (ex) { toast(`Couldn't undo: ${ex.message}`); } };
+    const houseN = K.houseNotesInTract(p.geoid).length;
+    nb.innerHTML = `<h4>Area notes</h4>${noteList(K.notesFor({ tract: p.geoid }), 'No notes on this area yet.')}
+      ${houseN ? `<div class="meta">${houseN} house note${houseN === 1 ? '' : 's'} in the walk list.</div>` : ''}
+      ${noteBox('For the team, e.g. “HOA says no soliciting on Elm” — no names or phone numbers')}`;
+    wireNotes(nb, () => ({ tract: p.geoid }), () => paintTractTeam(p));
+  }
   let openedAt = 0;
-  function closeSheet() { if (Date.now() - openedAt < 300) return; document.getElementById('sheet').classList.remove('open'); }
+  function closeSheet() { if (Date.now() - openedAt < 300) return; document.getElementById('sheet').classList.remove('open'); cardOpen = null; }
 
   // ---------- Walk list ----------
   const walk = { rows: [], shown: [], sort: 'walk', sortedAt: null, hideDone: false, geoid: null };
@@ -369,6 +478,12 @@
     const extra = [k.followup && FOLLOW[k.followup], k.rep, fmtWhen(k.knocked_at), k.pending && 'waiting to sync', k.failed && 'NOT SAVED'].filter(Boolean);
     return `<span class="kn" style="color:${st.color}">● ${esc(st.label)} · ${esc(extra.join(' · '))}</span>`;
   };
+  const noteSnip = (r) => {
+    const ns = K.notesFor({ bbl: r.bbl });
+    if (!ns.length) return '';
+    const body = ns[0].body.length > 70 ? ns[0].body.slice(0, 68) + '…' : ns[0].body;
+    return `<span class="snip">📝 ${ns.length > 1 ? `${ns.length} notes · ` : ''}“${esc(body)}” — ${esc(ns[0].rep || '')}</span>`;
+  };
   const isDone = (r) => { const k = K.latest(r.bbl); return !!(k && STATUS[k.status] && STATUS[k.status].done); };
 
   function renderWalk() {
@@ -388,7 +503,7 @@
     list.innerHTML = walk.shown.map((r, i) => `
       <div class="item" data-w="${i}">
         <div class="s" style="color:${colorFor(r.score)}">${r.score}</div>
-        <div class="a">${esc(r.address)}${tags(r)}<small>${r.units} unit${r.units > 1 ? 's' : ''} · built ${r.year || '—'}${r.sqft ? ` · ${Math.round(r.sqft).toLocaleString()} sq ft` : ''} · ${esc(r.cls)} · ${esc(r.zip)}</small>${knockLine(r)}</div>
+        <div class="a">${esc(r.address)}${tags(r)}<small>${r.units} unit${r.units > 1 ? 's' : ''} · built ${r.year || '—'}${r.sqft ? ` · ${Math.round(r.sqft).toLocaleString()} sq ft` : ''} · ${esc(r.cls)} · ${esc(r.zip)}</small>${knockLine(r)}${noteSnip(r)}</div>
         <div class="d"><span data-d="${i}">${here ? fmtDist(metres(here, [r.lat, r.lon])) : ''}</span><a href="https://maps.apple.com/?daddr=${r.lat},${r.lon}&dirflg=w" target="_blank" rel="noopener">Walk</a></div>
       </div>`).join('') || `<div class="empty">${walk.rows.length ? 'No homes match the home age / house size you picked.' : 'No homes in this tract.'}</div>`;
   }
@@ -422,7 +537,17 @@
     }
   }
 
-  // Pull the team's latest knocks for the open walk list.
+  // Team-wide: who has which turf, and the pins. Redraw the map only when that changes.
+  let teamSig = '';
+  function syncTeam() {
+    if (!canKnock()) return;
+    K.loadTeam().then(() => {
+      const sig = [...K.allTurf().values()].map((t) => t.tract + t.status + t.rep).join() + '|' + K.pins().map((n) => n.client_id).join();
+      if (sig !== teamSig) { teamSig = sig; render(); }
+    }).catch(() => { /* offline */ });
+  }
+
+  // Pull the team's latest knocks and notes for the open walk list.
   function syncTract() {
     if (!canKnock() || !walkOpen() || !walk.geoid) return;
     K.loadTract(walk.geoid).then(renderWalk).catch(() => { /* offline: keep what we have */ });
@@ -515,9 +640,61 @@
   document.getElementById('csvBtn').onclick = downloadCSV;
   map.on('click', closeSheet);
 
+  // ---------- Pins: notes dropped on the map ----------
+  function tractAtPoint(lat, lon) { const f = typeof tractAt === 'function' ? tractAt(lon, lat) : null; return f ? f.properties.geoid : null; }
+  function openPinEditor(lat, lon) {
+    const body = document.getElementById('noteBody');
+    const g = tractAtPoint(lat, lon);
+    body.innerHTML = `<div class="title">New pin</div>
+      <div class="meta">${g ? `Tract ${esc(g.slice(5))}` : 'Outside the scored tracts'} · the whole team will see it</div>
+      <div id="pinNew">${noteBox('e.g. “No soliciting sign”, “Gated block — skip” — no names or phone numbers')}</div>
+      <button class="btn ghost" id="pinCancel">Cancel</button>`;
+    wireNotes(document.getElementById('pinNew'), () => ({ tract: g, lat, lon }), () => { closeAll(); drawOverlay(); });
+    document.getElementById('pinCancel').onclick = closeAll;
+    document.getElementById('noteSheet').classList.add('open');
+    setTimeout(() => { const ta = body.querySelector('textarea'); if (ta) ta.focus(); }, 250);
+  }
+  function openPin(n) {
+    const body = document.getElementById('noteBody');
+    const me = K.me();
+    body.innerHTML = `<div class="title">📍 Pin</div>
+      <div class="note-item" style="font-size:16px">${esc(n.body)}<span class="who">${noteWho(n)}</span></div>
+      <a class="btn ghost" style="text-align:center;text-decoration:none" href="https://maps.apple.com/?daddr=${n.lat},${n.lon}&dirflg=w" target="_blank" rel="noopener">Walk here</a>
+      ${n.mine || (me && me.is_admin) ? '<button class="btn ghost" id="pinDel">Delete pin</button>' : ''}
+      <button class="btn ghost" id="pinClose">Close</button>`;
+    const del = document.getElementById('pinDel');
+    if (del) del.onclick = async () => { try { await K.deleteNote(n.client_id); closeAll(); drawOverlay(); toast('Pin deleted'); } catch (ex) { toast(`Couldn't delete: ${ex.message}`); } };
+    document.getElementById('pinClose').onclick = closeAll;
+    document.getElementById('noteSheet').classList.add('open');
+  }
+  function startPin() {
+    if (!canKnock()) { openAcct(); return; }
+    const body = document.getElementById('noteBody');
+    body.innerHTML = `<div class="title">Drop a pin</div>
+      <div class="meta">A note on the map the whole team can see.</div>
+      ${loc.last ? '<button class="btn" id="pinHere">At my location</button>' : ''}
+      <button class="btn ${loc.last ? 'ghost' : ''}" id="pinTap">Tap a spot on the map</button>
+      <button class="btn ghost" id="pinCancel">Cancel</button>`;
+    const here = document.getElementById('pinHere');
+    if (here) here.onclick = () => openPinEditor(loc.last[0], loc.last[1]);
+    document.getElementById('pinTap').onclick = () => { closeAll(); placingPin = true; toast('Tap the map where the pin goes'); };
+    document.getElementById('pinCancel').onclick = closeAll;
+    document.getElementById('noteSheet').classList.add('open');
+  }
+  map.on('click', (e) => {
+    if (!placingPin) return;
+    placingPin = false;
+    openPinEditor(e.latlng.lat, e.latlng.lng);
+  });
+
   // ---------- Account ----------
   const acctBtn = document.getElementById('acctBtn');
   function paintAcct() {
+    const on = K.enabled && K.signedIn() && !!K.me();
+    document.getElementById('mineBtn').style.display = on ? '' : 'none';
+    const pinBtn = document.getElementById('pinBtn');          // created with the map controls further down
+    if (pinBtn) pinBtn.style.display = on ? '' : 'none';
+    document.getElementById('legendReps').innerHTML = on ? Object.entries(REPCOLOR).map(([n, c]) => `<span><i style="border-color:${c}"></i>${esc(n)}</span>`).join('') : '';
     if (!K.enabled) { acctBtn.style.display = 'none'; return; }
     acctBtn.style.display = '';
     const n = K.pendingCount();
@@ -525,7 +702,7 @@
     acctBtn.textContent = !K.signedIn() ? 'Sign in' : me ? `${me.name}${n ? ` · ${n} to sync` : ''}` : 'Not on team';
     acctBtn.classList.toggle('warn', K.signedIn() && (!me || n > 0));
   }
-  const closeAll = () => ['acctSheet', 'knockSheet'].forEach((id) => document.getElementById(id).classList.remove('open'));
+  const closeAll = () => ['acctSheet', 'knockSheet', 'noteSheet'].forEach((id) => document.getElementById(id).classList.remove('open'));
   function openAcct() {
     const body = document.getElementById('acctBody');
     const me = K.me();
@@ -548,7 +725,7 @@
         try {
           const me = await K.signIn(document.getElementById('loginEmail').value, document.getElementById('loginPw').value);
           if (!me) { openAcct(); return; }
-          closeAll(); toast(`Signed in as ${me.name}`); syncTract();
+          closeAll(); toast(`Signed in as ${me.name}`); syncTract(); syncTeam();
         } catch (ex) {
           err.textContent = !ex.status ? 'No signal. Try again when you have service.' : /invalid/i.test(ex.message) ? 'Wrong email or password.' : ex.message;
           btn.disabled = false; btn.textContent = 'Sign in';
@@ -568,19 +745,35 @@
         <div class="meta">${esc(K.email())}</div>
         <div class="warn" style="margin-top:10px">${n ? `<b>${n} knock${n === 1 ? '' : 's'} waiting to sync.</b> They're saved on this phone and go up as soon as you have signal.` : 'All knocks synced.'}</div>
         ${n ? '<button class="btn" id="acctSync">Sync now</button>' : ''}
-        <h4 style="margin:14px 0 4px">Today</h4>
-        <div id="scoreBox" class="meta">Loading…</div>
+        <div class="section"><h4>My turf</h4><div id="myTurf" class="mine-list"></div></div>
+        <div class="section"><h4>My come-backs &amp; interested</h4><div id="myFollow" class="mine-list meta">Loading…</div></div>
+        <div class="section"><h4>Team today</h4><div id="scoreBox" class="meta">Loading…</div></div>
         <button class="btn ghost" id="acctOut">Sign out</button>
         <button class="btn ghost" id="acctClose">Close</button>${tip}`;
       if (n) document.getElementById('acctSync').onclick = async () => { await K.flush(); openAcct(); };
+      const featBy = (g) => data.features.find((f) => f.properties.geoid === g);
+      const goTract = (g) => { const f = featBy(g); if (!f) return; closeAll(); map.fitBounds(L.geoJSON(f).getBounds(), { maxZoom: 15 }); openSheet(f.properties); };
+      const mineTurf = [...K.allTurf().values()].filter((t) => t.rep === me.name && t.status !== 'open');
+      document.getElementById('myTurf').innerHTML = mineTurf.length ? mineTurf.map((t) => {
+        const f = featBy(t.tract); const pp = f ? f.properties : null;
+        return `<div class="item" data-go="${esc(t.tract)}"><div class="a">${pp ? `${esc(pp.county_name)} · tract ${esc(t.tract.slice(5))}` : esc(t.tract)}<small>${esc((TURF[t.status] || {}).label || t.status)} · ${esc(fmtWhen(t.set_at))}${pp ? ` · ${pp.homes.toLocaleString()} homes` : ''}</small></div></div>`;
+      }).join('') : '<div class="meta">Nothing claimed yet. Open a tract and tap Claim.</div>';
+      K.myFollowups().then((rows) => {
+        const el = document.getElementById('myFollow'); if (!el) return;
+        el.classList.remove('meta');
+        el.innerHTML = rows.length ? rows.map((k) => `<div class="item" data-go="${esc(k.tract)}"><div class="a">${esc(k.address || k.bbl)}<small style="color:${(STATUS[k.status] || {}).color}">${esc((STATUS[k.status] || {}).label || k.status)}${k.followup ? ` · ${esc(FOLLOW[k.followup] || '')}` : ''} · ${esc(fmtWhen(k.knocked_at))}</small></div></div>`).join('')
+          : '<div class="meta">None right now.</div>';
+        el.querySelectorAll('[data-go]').forEach((x) => (x.onclick = () => goTract(x.dataset.go)));
+      }).catch(() => { const el = document.getElementById('myFollow'); if (el) el.textContent = 'Offline — shows when you have signal.'; });
+      document.querySelectorAll('#myTurf [data-go]').forEach((x) => (x.onclick = () => goTract(x.dataset.go)));
       K.repStats().then((rows) => {
         const box = document.getElementById('scoreBox'); if (!box) return;
-        box.outerHTML = `<table class="score-table"><tr><th>Rep</th><th class="n">Knocks</th><th class="n">Booked</th><th class="n">All-time booked</th></tr>
-          ${rows.map((r) => `<tr><td>${esc(r.rep)}</td><td class="n">${r.knocks_today}</td><td class="n">${r.booked_today}</td><td class="n">${r.booked}</td></tr>`).join('')}</table>`;
+        box.outerHTML = `<table class="score-table"><tr><th>Rep</th><th class="n">Knocks</th><th class="n">Booked</th><th class="n">Turf</th><th class="n">All-time booked</th></tr>
+          ${rows.map((r) => `<tr><td>${esc(r.rep)}</td><td class="n">${r.knocks_today}</td><td class="n">${r.booked_today}</td><td class="n">${r.turf_claimed ?? 0}</td><td class="n">${r.booked}</td></tr>`).join('')}</table>`;
       }).catch(() => { const box = document.getElementById('scoreBox'); if (box) box.textContent = 'Offline — scoreboard shows when you have signal.'; });
     }
     const out = document.getElementById('acctOut');
-    if (out) out.onclick = async () => { try { await K.signOut(); closeAll(); renderIfWalk(); } catch (ex) { toast(ex.message); } };
+    if (out) out.onclick = async () => { try { await K.signOut(); closeAll(); state.mine = false; render(); renderIfWalk(); } catch (ex) { toast(ex.message); } };
     const close = document.getElementById('acctClose');
     if (close) close.onclick = closeAll;
     document.getElementById('sheet').classList.remove('open');
@@ -588,6 +781,11 @@
     document.getElementById('acctSheet').classList.add('open');
   }
   acctBtn.onclick = openAcct;
+  document.getElementById('mineBtn').onclick = (e) => {
+    state.mine = !state.mine; e.target.classList.toggle('on', state.mine); render();
+    if (state.mine && layer.getLayers().length) map.fitBounds(layer.getBounds(), { maxZoom: 15 });
+    else if (state.mine) toast('You have no claimed turf yet. Open a tract and tap Claim.');
+  };
 
   // ---------- Knock a door ----------
   let toastTimer = null, toastUndo = null;
@@ -625,11 +823,12 @@
           <button class="btn" id="fSave">Save come back</button>
         </div>
         ${canUndo ? '<button class="btn ghost" id="kUndo">Undo last knock</button>' : ''}
+        <div class="section" id="houseNotes"><h4>House notes</h4>${noteList(K.notesFor({ bbl: r.bbl }), 'No notes on this house yet.')}${noteBox('For the team, e.g. “Big dog — use side gate” — no names or phone numbers')}</div>
         <button class="btn ghost" id="kClose">Close</button>`;
       let follow = null;
       const save = (status, followup) => {
         try {
-          K.record(r.bbl, walk.geoid, status, followup);
+          K.record(r.bbl, walk.geoid, status, followup, r.address);
           closeAll();
           toast(`${STATUS[status].label} · ${r.address}`, () => K.undo(r.bbl));
         } catch (ex) { toast(ex.message); }
@@ -647,6 +846,7 @@
         body.querySelectorAll('[data-f]').forEach((x) => x.classList.toggle('on', x.dataset.f === follow));
       }));
       document.getElementById('fSave').onclick = () => save('come_back', follow);
+      wireNotes(document.getElementById('houseNotes'), () => ({ tract: walk.geoid, bbl: r.bbl, address: r.address }), () => openKnock(r));
       if (canUndo) document.getElementById('kUndo').onclick = async () => {
         try { await K.undo(r.bbl); closeAll(); toast('Knock removed'); } catch (ex) { toast(`Couldn't undo: ${ex.message}`); }
       };
@@ -673,21 +873,28 @@
   const renderIfWalk = () => { if (walkOpen()) renderWalk(); };
   K.onChange(() => {
     paintAcct();
+    if (cardOpen && document.getElementById('sheet').classList.contains('open')) {
+      const ta = document.querySelector('#areaNotes textarea.note');
+      if (!ta || (!ta.value && document.activeElement !== ta)) paintTractTeam(cardOpen);
+    }
+    const sig = [...K.allTurf().values()].map((t) => t.tract + t.status + t.rep).join() + '|' + K.pins().map((n) => n.client_id).join();
+    if (sig !== teamSig) { teamSig = sig; render(); }
     if (redrawQueued) return;
     redrawQueued = true;
     requestAnimationFrame(() => { redrawQueued = false; renderIfWalk(); });
   });
-  window.addEventListener('online', () => { K.flush && K.flush(); syncTract(); });
+  window.addEventListener('online', () => { K.flush && K.flush(); syncTract(); syncTeam(); });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') { if (K.flush) K.flush(); syncTract(); }
+    if (document.visibilityState === 'visible') { if (K.flush) K.flush(); syncTract(); syncTeam(); }
   });
   setInterval(() => {
     if (document.visibilityState !== 'visible') return;
     if (K.pendingCount() && K.flush) K.flush();
     syncTract();
+    syncTeam();
   }, ((appCfg && appCfg.refresh_seconds) || 60) * 1000);
   paintAcct();
-  if (K.enabled && K.signedIn()) { K.loadMe().catch(() => {}); if (K.flush) K.flush(); }
+  if (K.enabled && K.signedIn()) { K.loadMe().then(() => { paintAcct(); syncTeam(); }).catch(() => {}); if (K.flush) K.flush(); syncTeam(); }
 
   // ---------- Live location ----------
   // Uses the phone's GPS through the browser. The position never leaves the phone:
@@ -732,6 +939,17 @@
   } });
   new LocateCtl({ position: 'topright' }).addTo(map);
   new HereCtl({ position: 'topleft' }).addTo(map);
+  const PinCtl = L.Control.extend({ onAdd() {
+    const b = L.DomUtil.create('button', 'locate');
+    b.id = 'pinBtn'; b.type = 'button'; b.title = 'Drop a pin'; b.setAttribute('aria-label', 'Drop a pin with a note');
+    b.style.marginTop = '8px'; b.style.display = 'none';
+    b.onclick = () => startPin();
+    b.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s7-7.2 7-12.5A7 7 0 0 0 5 9.5C5 14.8 12 22 12 22z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
+    L.DomEvent.disableClickPropagation(b);
+    return b;
+  } });
+  new PinCtl({ position: 'topright' }).addTo(map);
+  paintAcct();
   const btn = document.getElementById('locateBtn');
   const here = document.getElementById('here');
 
