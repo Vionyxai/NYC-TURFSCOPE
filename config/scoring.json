@@ -15,7 +15,7 @@
     { "label": "150k+",    "max": null }
   ],
   "targeting": {
-    "_readme": "Filters a rep can mix and match on the map. Picking none in a group means any. Home age uses the median year built of 1-4 family lots in NYC (PLUTO), else ACS B25035; walk lists filter each house by its own year. A tract is flagged renter-heavy when renter-occupied households are at least renter_heavy_share. Homeowner age uses ACS B25007 brackets (15-24, 25-34, 35-44, 45-54, 55-59, 60-64, 65-74, 75-84, 85+), so band edges must fall on those. House size uses building square feet where NYC lot data exists, otherwise ACS median rooms.",
+    "_readme": "Filters a rep can mix and match on the map. Picking none in a group means any. Heating oil uses the ACS share of homes heated with oil (B25040); picking several oil bands uses the lowest one. oil_focus is the one-tap preset; oil_color_breaks are the edges of the five map colors when coloring by oil. Home age uses the median year built of 1-4 family lots in NYC (PLUTO), else ACS B25035; walk lists filter each house by its own year. A tract is flagged renter-heavy when renter-occupied households are at least renter_heavy_share. Homeowner age uses ACS B25007 brackets (15-24, 25-34, 35-44, 45-54, 55-59, 60-64, 65-74, 75-84, 85+), so band edges must fall on those. House size uses building square feet where NYC lot data exists, otherwise ACS median rooms.",
     "owner_age_bands": [
       { "key": "u45",   "label": "Under 45", "from": 15, "to": 44 },
       { "key": "45_64", "label": "45–64",    "from": 45, "to": 64 },
@@ -28,6 +28,13 @@
       { "key": "2000p",   "label": "2000+",       "max_year": null }
     ],
     "renter_heavy_share": 0.5,
+    "oil_bands": [
+      { "key": "oil25", "label": "25%+ oil", "min": 0.25 },
+      { "key": "oil40", "label": "40%+ oil", "min": 0.40 },
+      { "key": "oil60", "label": "60%+ oil", "min": 0.60 }
+    ],
+    "oil_focus": { "label": "PSEG LI · 40%+ oil", "utility": "psegli", "oil_band": "oil40" },
+    "oil_color_breaks": [0.10, 0.25, 0.40, 0.60],
     "size_bands": [
       { "key": "small",  "label": "Small",  "max_sqft": 1500, "max_rooms": 5.5 },
       { "key": "medium", "label": "Medium", "max_sqft": 2500, "max_rooms": 7 },

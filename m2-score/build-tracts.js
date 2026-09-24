@@ -215,6 +215,9 @@ writeJSON(out('summary.json'), {
     income_bands: scoring.income_bands.map((b) => b.label),
     owner_age_bands: (scoring.targeting?.owner_age_bands || []).map(({ key, label }) => ({ key, label })),
     home_age_bands: scoring.targeting?.home_age_bands || [],
+    oil_bands: scoring.targeting?.oil_bands || [],
+    oil_focus: scoring.targeting?.oil_focus || null,
+    oil_color_breaks: scoring.targeting?.oil_color_breaks || [0.1, 0.25, 0.4, 0.6],
     size_bands: scoring.targeting?.size_bands || [],
     // Turf-wide share of homeowners in each age band, so the map can show "more than usual".
     owner_age_avg: Object.fromEntries(Object.entries(ownerAgeSum).map(([k, v]) => [k, round(v / ownerTot, 3)])),

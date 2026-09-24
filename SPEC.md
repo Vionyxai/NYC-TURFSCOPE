@@ -36,6 +36,7 @@ Two files control scope:
 **Tract heat map** (`m3-map/`, mobile-first, deploys to Vercel as static files)
 - Fill color = TurfScore; border color = utility
 - Filters: utility, DAC only, minimum score; a "Best turf" ranked list
+- Oil focus: one tap = PSEG LI + 40%+ of homes heated with oil (ACS B25040), map colored by oil share, Best turf sorted by most oil. A Heating oil target group (25% / 40% / 60%+) and a "Color the map by: TurfScore / Oil %" switch are in the Target sheet. Thresholds live in `config/scoring.json → targeting` (`oil_bands`, `oil_focus`, `oil_color_breaks`).
 - Target (rep picks any mix; none picked in a group = any): income band (tract median), home age (Before 1940 / 1940–79 / 1980–99 / 2000+: median year built of 1–4 family lots in NYC, ACS B25035 elsewhere; walk lists filter each house by its own year), homeowner age (rough estimate) (tracts where owners in the picked ages — Under 45 / 45–64 / 65+, ACS B25007 — are more common than turf-wide), house size (Small / Medium / Large: median building sq ft of 1–4 family lots from PLUTO in NYC, ACS median rooms B25018 elsewhere). Bands live in `config/scoring.json → targeting`.
 - Live location: the locate button follows your GPS position and shows the tract you're standing in (score, utility). The position stays on the phone; nothing is sent or stored.
 - Renters: every card shows owners / renters; tracts with ≥ 50% renter households get a renter-heavy badge. In NYC the card also counts 2–4 family homes (which have rental units) and homes with a business.

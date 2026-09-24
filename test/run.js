@@ -268,6 +268,10 @@ t('targeting: homeowner age, house size, turf-wide age average', () => {
   assert.equal(by[T.nassau].size_band, 'medium');   // 6.2 median rooms
   const summary = JSON.parse(fs.readFileSync(path.join(OUT, 'summary.json'), 'utf8'));
   assert.deepEqual(summary.targeting.income_bands, ['<60k', '60–100k', '100–150k', '150k+']);
+  assert.deepEqual(summary.targeting.oil_bands.map((b) => b.min), [0.25, 0.4, 0.6]);
+  assert.equal(summary.targeting.oil_focus.utility, 'psegli');
+  assert.ok(summary.targeting.oil_bands.some((b) => b.key === summary.targeting.oil_focus.oil_band), 'oil focus points at a real band');
+  assert.equal(summary.targeting.oil_color_breaks.length, 4);
   assert.ok(summary.targeting.owner_age_avg['65p'] > 0 && summary.targeting.owner_age_avg['65p'] < 0.4);
 });
 t('home age, renters and home businesses on tracts', () => {

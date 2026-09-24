@@ -164,9 +164,9 @@
   </header>
   <div id="map"></div>
   <div class="legend">
-    <div>TurfScore</div>
+    <div id="legendTitle">TurfScore</div>
     <div class="bar" id="legendBar"></div>
-    <div style="display:flex;justify-content:space-between"><span>0</span><span>100</span></div>
+    <div style="display:flex;justify-content:space-between" id="legendScale"><span>0</span><span>100</span></div>
     <div class="ut" id="legendUt"></div>
     <div class="ut" id="legendReps"></div>
   </div>
@@ -178,6 +178,9 @@
   <div class="grab"></div>
   <div class="row"><div class="title">Target</div><button class="chip" id="targetClear">Clear all</button></div>
   <div class="meta">Pick any mix. Nothing picked in a group means any.</div>
+  <button class="btn" id="oilFocus" style="background:#92400e;color:#fff">Oil focus</button>
+  <div class="group"><h4>Heating oil (share of homes heated with oil)</h4><div class="row" id="tgOil"></div></div>
+  <div class="group"><h4>Color the map by</h4><div class="seg" id="colorBy"><button data-c="score" class="on">TurfScore</button><button data-c="oil">Oil %</button></div></div>
   <div class="group"><h4>Income (tract median)</h4><div class="row" id="tgIncome"></div></div>
   <div class="group"><h4>Home age (year built)</h4><div class="row" id="tgHome"></div></div>
   <div class="group"><h4>Homeowner age (rough estimate) — more than usual</h4><div class="row" id="tgAge"></div></div>
@@ -219,7 +222,7 @@
   const money = (x) => (x == null ? '—' : '$' + Math.round(x / 1000) + 'k');
 
   let placingPin = false;                                      // true after "Tap a spot on the map"
-  const state = { util: 'all', dac: false, mine: false, min: 0, incomes: new Set(), homes: new Set(), ages: new Set(), sizes: new Set() };
+  const state = { util: 'all', dac: false, mine: false, min: 0, oils: new Set(), colorBy: 'score', bestSort: 'score', incomes: new Set(), homes: new Set(), ages: new Set(), sizes: new Set() };
   let data, summary, walkIndex = {}, layer, currentList = null;
 
   const map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([40.72, -73.75], 11);
@@ -247,11 +250,24 @@
 
   document.getElementById('meta').textContent = `${summary.tracts} tracts`;
   document.getElementById('legendBar').innerHTML = COLORS.map((c) => `<span style="background:${c}"></span>`).join('');
+  function paintLegend() {
+    const oil = state.colorBy === 'oil';
+    document.getElementById('legendTitle').textContent = oil ? 'Homes heated with oil' : 'TurfScore';
+    const br = (typeof OIL_BREAKS !== 'undefined' ? OIL_BREAKS : [0.1, 0.25, 0.4, 0.6]);
+    document.getElementById('legendScale').innerHTML = oil ? `<span>0%</span><span>${Math.round(br[br.length - 1] * 100)}%+</span>` : '<span>0</span><span>100</span>';
+  }
   document.getElementById('legendUt').innerHTML = Object.keys(UT)
     .map((u) => `<span><i style="border-color:${utColor(u)}"></i>${esc(UT[u].label)}</span>`).join('');
 
   const TG = { income_bands: [], owner_age_bands: [], home_age_bands: [], size_bands: [], owner_age_avg: {}, ...(summary.targeting || {}) };
   const sizeLabel = (k) => (TG.size_bands.find((b) => b.key === k) || {}).label || '';
+  TG.oil_bands = TG.oil_bands || [];
+  const oilOf = (p) => (p.fuel && p.fuel.oil != null ? p.fuel.oil : null);
+  // Several oil picks = the lowest one (e.g. 25%+ and 60%+ together means 25%+).
+  const oilMin = () => Math.min(...[...state.oils].map((k) => (TG.oil_bands.find((b) => b.key === k) || { min: 0 }).min));
+  const OIL_BREAKS = TG.oil_color_breaks || [0.1, 0.25, 0.4, 0.6];
+  const oilColor = (x) => COLORS[x == null ? 0 : OIL_BREAKS.filter((b) => x >= b).length];
+  const fillFor = (p) => (state.colorBy === 'oil' ? oilColor(oilOf(p)) : colorFor(p.score));
   const homeLabel = (k) => (TG.home_age_bands.find((b) => b.key === k) || {}).label || '';
   // Walk list: the house-level targets (home age, house size) filter each lot by its own facts.
   const lotPasses = (r) => (!state.homes.size || state.homes.has(r.age)) && (!state.sizes.size || state.sizes.has(r.size));
@@ -318,6 +334,7 @@
     (!state.homes.size || state.homes.has(p.home_age_band)) &&
     (!state.ages.size || ageOK(p)) &&
     (!state.sizes.size || state.sizes.has(p.size_band)) &&
+    (!state.oils.size || (oilOf(p) != null && oilOf(p) >= oilMin())) &&
     p.score >= state.min &&
     (!state.mine || (turfOf(p.geoid) && turfOf(p.geoid).rep === (K.me() && K.me().name)));
 
@@ -349,7 +366,7 @@
       filter: (f) => passes(f.properties),
       style: (f) => {
         const t = turfOf(f.properties.geoid);
-        const base = { fillColor: colorFor(f.properties.score), fillOpacity: 0.55, color: utColor(f.properties.utility), weight: 1.2, opacity: 0.9 };
+        const base = { fillColor: fillFor(f.properties), fillOpacity: 0.55, color: utColor(f.properties.utility), weight: 1.2, opacity: 0.9 };
         if (!t) return base;
         // Claimed = solid outline in the rep's color, finished = dashed, avoid = dark dotted and faded.
         if (t.status === 'avoid') return { ...base, color: '#111827', weight: 3, dashArray: '2 6', fillOpacity: 0.2 };
@@ -554,20 +571,27 @@
   }
 
   function openBest() {
-    const top = data.features.filter((f) => passes(f.properties)).slice(0, 25); // already sorted by score
+    const all = data.features.filter((f) => passes(f.properties)); // already sorted by score
+    if (state.bestSort === 'oil') all.sort((a, b) => (oilOf(b.properties) ?? -1) - (oilOf(a.properties) ?? -1) || b.properties.score - a.properties.score);
+    const top = all.slice(0, 25);
     currentList = null;
     walk.geoid = null;
     document.getElementById('csvBtn').style.display = 'none';
     document.getElementById('walkBar').style.display = 'none';
     document.getElementById('panelTitle').textContent = 'Best turf';
-    document.getElementById('panelList').innerHTML = top.map((f, i) => {
+    const sortBar = `<div class="row" style="padding:10px 0;gap:8px"><div class="seg" id="bestSort">
+        <button data-b="score" class="${state.bestSort === 'score' ? 'on' : ''}">Top score</button>
+        <button data-b="oil" class="${state.bestSort === 'oil' ? 'on' : ''}">Most oil</button></div>
+        <span class="meta">${all.length} tract${all.length === 1 ? '' : 's'} match</span></div>`;
+    document.getElementById('panelList').innerHTML = sortBar + top.map((f, i) => {
       const p = f.properties;
       return `<div class="item" data-i="${i}">
         <div class="s" style="color:${colorFor(p.score)}">${p.score}</div>
         <div class="a">${esc(p.county_name)} · tract ${esc(p.geoid.slice(5))}
-          <small>${p.homes.toLocaleString()} homes · ${money(p.median_income)} · ${pct(p.pre1980)} pre-1980 · ${esc(utLabel(p.utility))}${p.dac ? ' · DAC' : ''}</small></div>
+          <small><b>${pct(oilOf(p))} oil</b> · ${p.homes.toLocaleString()} homes · ${money(p.median_income)} · ${pct(p.pre1980)} pre-1980 · ${esc(utLabel(p.utility))}${p.dac ? ' · DAC' : ''}</small></div>
       </div>`;
-    }).join('') || '<div class="empty">Nothing matches these filters.</div>';
+    }).join('') + (top.length ? '' : '<div class="empty">Nothing matches these filters.</div>');
+    document.querySelectorAll('#bestSort button').forEach((b) => (b.onclick = () => { state.bestSort = b.dataset.b; openBest(); }));
     document.querySelectorAll('#panelList .item[data-i]').forEach((el) => {
       el.onclick = () => {
         const f = top[Number(el.dataset.i)];
@@ -603,11 +627,14 @@
     ['tgHome', 'homes', TG.home_age_bands],
     ['tgAge', 'ages', TG.owner_age_bands],
     ['tgSize', 'sizes', TG.size_bands],
+    ['tgOil', 'oils', TG.oil_bands],
   ];
   const countMatches = () => data.features.filter((f) => passes(f.properties)).length;
   function paintTarget() {
     for (const [id, k] of groups) document.querySelectorAll(`#${id} .chip`).forEach((b) => b.classList.toggle('on', state[k].has(b.dataset.k)));
-    const n = state.incomes.size + state.homes.size + state.ages.size + state.sizes.size;
+    const n = state.incomes.size + state.homes.size + state.ages.size + state.sizes.size + state.oils.size;
+    document.querySelectorAll('#colorBy button').forEach((b) => b.classList.toggle('on', b.dataset.c === state.colorBy));
+    paintLegend();
     const tb = document.getElementById('targetBtn');
     tb.textContent = n ? `Target · ${n}` : 'Target';
     tb.classList.toggle('on', n > 0);
@@ -625,7 +652,26 @@
   }
   document.getElementById('targetBtn').onclick = () => { paintTarget(); document.getElementById('sheet').classList.remove('open'); document.getElementById('targetSheet').classList.add('open'); };
   document.getElementById('targetDone').onclick = () => document.getElementById('targetSheet').classList.remove('open');
-  document.getElementById('targetClear').onclick = () => { state.incomes.clear(); state.homes.clear(); state.ages.clear(); state.sizes.clear(); paintTarget(); render(); };
+  document.getElementById('targetClear').onclick = () => { state.incomes.clear(); state.homes.clear(); state.ages.clear(); state.sizes.clear(); state.oils.clear(); paintTarget(); render(); };
+  // One tap: PSEG LI + high-oil tracts, colored by oil, best list sorted by most oil.
+  const FOCUS = TG.oil_focus;
+  const focusBtn = document.getElementById('oilFocus');
+  if (!FOCUS || !TG.oil_bands.length) focusBtn.style.display = 'none';
+  else {
+    focusBtn.textContent = `Oil focus: ${FOCUS.label}`;
+    focusBtn.onclick = () => {
+      state.util = FOCUS.utility;
+      document.querySelectorAll('#utilSeg button').forEach((x) => x.classList.toggle('on', x.dataset.u === FOCUS.utility));
+      state.oils = new Set([FOCUS.oil_band]);
+      state.colorBy = 'oil';
+      state.bestSort = 'oil';
+      paintTarget(); render();
+      document.getElementById('targetSheet').classList.remove('open');
+      if (layer.getLayers().length) map.fitBounds(layer.getBounds());
+      toast(`${countMatches()} PSEG LI tracts with ${Math.round(((TG.oil_bands.find((b) => b.key === FOCUS.oil_band) || {}).min || 0) * 100)}%+ oil`);
+    };
+  }
+  document.querySelectorAll('#colorBy button').forEach((b) => (b.onclick = () => { state.colorBy = b.dataset.c; paintTarget(); render(); }));
   map.on('click', () => document.getElementById('targetSheet').classList.remove('open'));
 
   document.querySelectorAll('#walkSort button').forEach((b) => (b.onclick = () => {
