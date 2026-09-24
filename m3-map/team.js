@@ -18,7 +18,7 @@
   }
 
   // Where each kind of entry is stored in the database.
-  const TABLE = { knock: 'knocks', turf: 'turf_log', note: 'notes' };
+  const TABLE = { knock: 'knocks', turf: 'turf_log', note: 'notes', saved: 'saved_turfs' };
 
   function createTeam(opts) {
     const sb = opts.supabase;                 // { url, key } or null when not set up
@@ -32,6 +32,9 @@
     const byBbl = new Map();                  // bbl -> latest knock (anyone's, or our pending one)
     const turfBy = new Map();                 // tract -> latest area status
     const notes = new Map();                  // client_id -> note / pin
+    const K2 = { saved: 'ts.saved', activity: 'ts.activity' };
+    let teamSaved = [];                       // everyone's saved turfs: { tract, plan_date, saved_at, rep, client_id }
+    let activity = {};                        // tract -> { knocked, notes, pins, turf_status, turf_rep, last_at, last_rep }
     let flushing = null;
 
     const read = (k, d) => { try { const v = store.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
@@ -42,6 +45,8 @@
     let session = read(K.session, null);      // { access_token, refresh_token, expires_at (s), email }
     let me = read(K.me, null);                 // { name, is_admin } once confirmed on the team
     let queue = read(K.queue, []).map((q) => (q.kind ? q : { kind: 'knock', row: q }));  // entries not yet in the database
+    teamSaved = read(K2.saved, []);           // last copy we saw, so the list shows with no signal
+    activity = read(K2.activity, {});
 
     // Show our own unsent entries straight away.
     function applyLocal(q) {
@@ -49,6 +54,10 @@
       if (q.kind === 'knock') byBbl.set(q.row.bbl, { ...q.row, ...mine });
       if (q.kind === 'turf') turfBy.set(q.row.tract, { ...q.row, ...mine });
       if (q.kind === 'note') notes.set(q.row.client_id, { ...q.row, ...mine });
+      if (q.kind === 'saved') {
+        teamSaved = teamSaved.filter((x) => !(x.tract === q.row.tract && me && x.rep === me.name));
+        teamSaved.push({ ...q.row, ...mine });
+      }
     }
     queue.forEach(applyLocal);
 
@@ -135,8 +144,8 @@
     async function signOut() {
       if (queue.length) throw new Error(`${queue.length} change(s) haven't synced yet. Get signal, tap Sync now, then sign out.`);
       try { if (session) await call('/auth/v1/logout', { method: 'POST' }); } catch (e) { /* offline is fine */ }
-      session = null; me = null; byBbl.clear(); turfBy.clear(); notes.clear();
-      write(K.session, null); write(K.me, null);
+      session = null; me = null; byBbl.clear(); turfBy.clear(); notes.clear(); teamSaved = []; activity = {};
+      write(K.session, null); write(K.me, null); write(K2.saved, null); write(K2.activity, null);
       emit();
     }
 
@@ -158,6 +167,7 @@
       if (q.kind === 'knock') upd(byBbl, q.row.bbl);
       if (q.kind === 'turf') upd(turfBy, q.row.tract);
       if (q.kind === 'note') upd(notes, q.row.client_id);
+      if (q.kind === 'saved') teamSaved = teamSaved.map((x) => (x.client_id === q.row.client_id ? { ...x, pending: false, failed: failed || undefined } : x));
     }
 
     async function flush() {
@@ -172,8 +182,11 @@
           const batch = queue.slice(0, n);
           let failed = null;
           try {
-            await call(`/rest/v1/${TABLE[kind]}?on_conflict=client_id`, {
-              method: 'POST', body: batch.map((q) => q.row), headers: { Prefer: 'resolution=ignore-duplicates,return=minimal' },
+            // Saved turfs: one row per rep per tract, so saving again updates the date. Everything else: a retry never double-saves.
+            const conflict = kind === 'saved' ? 'rep_id,tract' : 'client_id';
+            const resolution = kind === 'saved' ? 'merge-duplicates' : 'ignore-duplicates';
+            await call(`/rest/v1/${TABLE[kind]}?on_conflict=${conflict}`, {
+              method: 'POST', body: batch.map((q) => q.row), headers: { Prefer: `resolution=${resolution},return=minimal` },
             });
           } catch (e) {
             if (e.status === 401 || !e.status || e.status >= 500 || e.status === 429) break; // offline / signed out: try later
@@ -294,6 +307,45 @@
       return (await call('/rest/v1/rep_stats?select=rep,knocks,booked,knocks_today,booked_today,turf_claimed')) || [];
     }
 
+    // ---------- Saved turfs ----------
+    // A rep's own queue of tracts, with an optional planned date (YYYY-MM-DD).
+    function saveTurf(tract, planDate) {
+      return enqueue('saved', { tract: String(tract), plan_date: planDate || null, saved_at: iso() });
+    }
+    async function unsaveTurf(tract) {
+      if (!me) return;
+      const t = String(tract);
+      const pending = queue.filter((q) => q.kind === 'saved' && q.row.tract === t);
+      if (pending.length) { queue = queue.filter((q) => !pending.includes(q)); write(K.queue, queue); }
+      const wasSaved = teamSaved.some((x) => x.tract === t && x.rep === me.name && !x.pending);
+      teamSaved = teamSaved.filter((x) => !(x.tract === t && x.rep === me.name));
+      write(K2.saved, teamSaved);
+      emit();
+      // The database only lets you remove your own, so filtering by tract is safe.
+      if (wasSaved) await call(`/rest/v1/saved_turfs?tract=eq.${encodeURIComponent(t)}`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
+    }
+    async function loadSaved() {
+      const rows = (await call('/rest/v1/team_saved_turfs?select=client_id,tract,plan_date,saved_at,rep&order=plan_date.asc.nullslast,saved_at.asc')) || [];
+      const pendingSaved = queue.filter((q) => q.kind === 'saved');
+      teamSaved = rows.map((r) => ({ ...r, mine: !!me && r.rep === me.name }));
+      pendingSaved.forEach(applyLocal);
+      write(K2.saved, teamSaved.filter((x) => !x.pending));
+      const tracts = [...new Set(teamSaved.map((x) => x.tract))];
+      if (tracts.length) {
+        const act = (await call(`/rest/v1/tract_activity?tract=in.(${tracts.join(',')})`)) || [];
+        activity = Object.fromEntries(act.map((a) => [a.tract, a]));
+        write(K2.activity, activity);
+      }
+      emit();
+      return teamSaved;
+    }
+    // "working" once anyone has knocked, noted, pinned or claimed there; otherwise "queued".
+    const turfStage = (tract) => {
+      const a = activity[String(tract)];
+      const localWork = [...byBbl.values()].some((k) => k.tract === String(tract)) || [...notes.values()].some((n) => n.tract === String(tract));
+      return (a && (a.knocked || a.notes || a.pins || (a.turf_status && a.turf_status !== 'open'))) || localWork ? 'working' : 'queued';
+    };
+
     // "My stuff": my come-backs and interested houses across all tracts.
     async function myFollowups() {
       if (!me) return [];
@@ -305,6 +357,11 @@
       signIn, signOut, loadMe, flush,
       record, undo, setTurf, undoTurf, addNote, deleteNote,
       loadTract, loadTeam, tractProgress, repStats, myFollowups,
+      saveTurf, unsaveTurf, loadSaved, turfStage,
+      mySaved: () => teamSaved.filter((x) => me && x.rep === me.name),
+      teamSaved: () => teamSaved,
+      savedFor: (tract) => teamSaved.find((x) => me && x.rep === me.name && x.tract === String(tract)) || null,
+      activityFor: (tract) => activity[String(tract)] || null,
       latest: (bbl) => byBbl.get(String(bbl)) || null,
       turf: (tract) => turfBy.get(String(tract)) || null,
       allTurf: () => turfBy,

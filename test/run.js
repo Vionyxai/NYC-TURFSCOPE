@@ -556,6 +556,37 @@ await at('mixed offline queue (knock, claim, note) syncs in order after a reload
   const stats = await again.repStats();
   assert.equal(stats.find((r) => r.rep === 'Matt').turf_claimed, 1);
 });
+await at('saved turfs: my queue, re-save updates the date, working vs queued, works offline', async () => {
+  const sb = makeTeam(); const storage = memoryStorage();
+  const matt = app(sb, storage); await matt.signIn('matt@x.com', 'pw-matt');
+  const QUEUED = '36103158506';
+  sb.state.offline = true;                                 // save with no signal
+  matt.saveTurf(TR, '2026-09-25');
+  matt.saveTurf(QUEUED, null);
+  assert.equal(matt.mySaved().length, 2);
+  assert.equal(matt.savedFor(TR).pending, true);
+  sb.state.offline = false; await matt.flush();
+  assert.equal(sb.tables.saved_turfs.length, 2);
+  matt.saveTurf(QUEUED, '2026-10-01'); await matt.flush();  // re-save = new date, not a second row
+  assert.equal(sb.tables.saved_turfs.length, 2);
+  assert.equal(sb.tables.saved_turfs.find((x) => x.tract === QUEUED).plan_date, '2026-10-01');
+  // Gio knocks in TR → TR becomes "working" for everyone; QUEUED stays "queued"
+  const gio = app(sb, memoryStorage()); await gio.signIn('gio@x.com', 'pw-gio');
+  gio.record('4012345678', TR, 'no_answer', null, '138-04 109 AVENUE'); await gio.flush();
+  await matt.loadSaved();
+  assert.equal(matt.turfStage(TR), 'working');
+  assert.equal(matt.turfStage(QUEUED), 'queued');
+  assert.equal(matt.activityFor(TR).last_rep, 'Gio');
+  await gio.loadSaved();
+  assert.equal(gio.mySaved().length, 0);                   // Matt's list isn't Gio's
+  assert.equal(gio.teamSaved().filter((x) => x.rep === 'Matt').length, 2);   // but the team can see it
+  await gio.unsaveTurf(TR);                                // Gio can't remove Matt's
+  assert.equal(sb.tables.saved_turfs.length, 2);
+  await matt.unsaveTurf(TR);
+  assert.deepEqual(sb.tables.saved_turfs.map((x) => x.tract), [QUEUED]);
+  const again = app(sb, storage);                          // reopen with no signal: the list is still there
+  assert.deepEqual([...again.mySaved().map((x) => x.tract)], [QUEUED]);
+});
 await at('note rule in the app matches the database rule', async () => {
   const cases = { 'call 718-555-1234': 1, 'call (718) 555 1234': 1, '7185551234': 1, 'jo@gmail.com': 1, 'house 138-04, 2 dogs': 0, 'come back after 5:30pm': 0, 'Ring 3 times': 0 };
   for (const [text, bad] of Object.entries(cases)) assert.equal(!!ctx.TurfTeam.noteProblem(text), !!bad, text);

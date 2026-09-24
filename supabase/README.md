@@ -51,6 +51,9 @@ The emails must match the logins from step 3 exactly (upper/lower case doesn't m
 ## Step 4b: allow Long Island house IDs
 Long Island walk lists use the state's parcel IDs instead of NYC's 10-digit lot numbers. Paste the contents of `supabase/002_long_island_ids.sql` into a new SQL Editor tab and press **Run** (once). Until then, knocks and house notes on Long Island houses won't save.
 
+## Step 4c: saved turfs
+Paste the contents of `supabase/003_saved_turfs.sql` into a new SQL Editor tab and press **Run** (once). Until then the ★ Saved list stays empty.
+
 ## Step 5: connect the app
 1. **Project Settings → API Keys** (or **API**). Copy:
    - **Project URL**, like `https://abcd1234.supabase.co`

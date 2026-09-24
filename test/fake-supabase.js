@@ -2,7 +2,7 @@
 // It mirrors the rules in supabase/001_team_tracking.sql closely enough to test the app logic offline.
 // (The real rules are tested against Postgres by supabase/tests/rls_test.sql.)
 export function fakeSupabase({ users, reps, statuses, turfStatuses = ['claimed', 'finished', 'avoid', 'open'] }) {
-  const tables = { knocks: [], turf_log: [], notes: [] };
+  const tables = { knocks: [], turf_log: [], notes: [], saved_turfs: [] };
   const tokens = new Map();          // access token -> email
   const refreshTokens = new Map();   // refresh token -> email
   let n = 0, ids = 0;
@@ -26,6 +26,19 @@ export function fakeSupabase({ users, reps, statuses, turfStatuses = ['claimed',
     latest_knocks: () => newest(tables.knocks, 'bbl', 'knocked_at'),
     turf_status: () => newest(tables.turf_log, 'tract', 'set_at'),
     team_notes: () => tables.notes.map((x) => ({ ...x, rep: repName(x.rep_id) })),
+    team_saved_turfs: () => tables.saved_turfs.map((x) => ({ ...x, rep: repName(x.rep_id) })),
+    tract_activity: () => {
+      const tracts = new Set([...tables.knocks, ...tables.notes, ...tables.turf_log].map((x) => x.tract).filter(Boolean));
+      const turf = newest(tables.turf_log, 'tract', 'set_at');
+      return [...tracts].map((t) => {
+        const ks = newest(tables.knocks, 'bbl', 'knocked_at').filter((k) => k.tract === t);
+        const ns = tables.notes.filter((n) => n.tract === t);
+        const ts = turf.find((x) => x.tract === t);
+        const recent = [...ks.map((k) => [k.knocked_at, k.rep]), ...ns.map((n) => [n.noted_at, repName(n.rep_id)])].sort().pop();
+        return { tract: t, knocked: ks.length, notes: ns.filter((n) => n.lat == null).length, pins: ns.filter((n) => n.lat != null).length,
+          turf_status: ts ? ts.status : null, turf_rep: ts ? ts.rep : null, last_at: recent ? recent[0] : ts && ts.set_at, last_rep: recent ? recent[1] : ts && ts.rep };
+      }).filter((a) => a.knocked || a.notes || a.pins || (a.turf_status && a.turf_status !== 'open'));
+    },
   };
   // PostgREST-style filters the app uses: eq, in, is.null, not.is.null
   const filter = (rows, params) => rows.filter((r) => [...params].every(([k, v]) => {
@@ -42,6 +55,7 @@ export function fakeSupabase({ users, reps, statuses, turfStatuses = ['claimed',
     knocks: (k) => statuses.includes(k.status),
     turf_log: (t) => turfStatuses.includes(t.status),
     notes: (x) => x.body && x.body.trim() && x.body.length <= 280 && !phone.test(x.body) && !email.test(x.body),
+    saved_turfs: (x) => /^[0-9]{11}$/.test(x.tract),
   };
 
   async function fetch(url, { method = 'GET', headers = {}, body } = {}) {
@@ -70,9 +84,19 @@ export function fakeSupabase({ users, reps, statuses, turfStatuses = ['claimed',
     if (tables[name] && method === 'POST') {
       if (!rep) return json(403, { message: `new row violates row-level security policy for table "${name}"` });
       for (const row of data) if (!check[name](row)) return json(400, { message: `violates check constraint on ${name}` });
-      for (const row of data) if (!tables[name].some((x) => x.client_id === row.client_id)) tables[name].push({ ...row, id: ++ids, rep_id: rep.id });
+      if (name === 'saved_turfs') {             // on_conflict=rep_id,tract + merge-duplicates: saving again updates
+        for (const row of data) {
+          const cur = tables.saved_turfs.find((x) => x.rep_id === rep.id && x.tract === row.tract);
+          if (cur) Object.assign(cur, row); else tables.saved_turfs.push({ ...row, id: ++ids, rep_id: rep.id });
+        }
+      } else for (const row of data) if (!tables[name].some((x) => x.client_id === row.client_id)) tables[name].push({ ...row, id: ++ids, rep_id: rep.id });
       if (state.loseResponses > 0) { state.loseResponses--; throw new TypeError('Network connection was lost'); } // saved, but the phone never hears back
       return json(201);
+    }
+    if (name === 'saved_turfs' && method === 'DELETE') {   // own rows only, by tract
+      const t = u.searchParams.get('tract').replace('eq.', '');
+      tables.saved_turfs = tables.saved_turfs.filter((x) => !(x.tract === t && x.rep_id === rep?.id));
+      return json(204);
     }
     if (tables[name] && method === 'DELETE') {
       const id = u.searchParams.get('client_id').replace('eq.', '');

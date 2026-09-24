@@ -148,6 +148,39 @@ delete from notes where client_id = '44444444-4444-4444-4444-444444444444';
 do $$ begin assert (select count(*) from notes where client_id = '44444444-4444-4444-4444-444444444444') = 0, 'admin removed Matt''s note'; end $$;
 reset role;
 
+-- ---------- Saved turfs (003) ----------
+select pg_temp.as_user('matt@x.com');
+insert into saved_turfs (client_id,tract,plan_date) values (gen_random_uuid(),'36081019400', current_date + 1);
+insert into saved_turfs (client_id,tract) values (gen_random_uuid(),'36103158506');
+-- saving again updates the date instead of duplicating
+insert into saved_turfs (client_id,tract,plan_date) values (gen_random_uuid(),'36103158506', current_date + 7)
+  on conflict (rep_id, tract) do update set plan_date = excluded.plan_date, client_id = excluded.client_id, saved_at = now();
+select pg_temp.fails($q$insert into saved_turfs (client_id,tract,rep_id) values (gen_random_uuid(),'36081019400',(select id from reps where name='Gio'))$q$, 'save as someone else');
+do $$ begin
+  assert (select count(*) from team_saved_turfs where rep = 'Matt') = 2, 'Matt has two saved';
+  assert (select plan_date from team_saved_turfs where tract = '36103158506') = current_date + 7, 'plan date updated';
+  -- 019400 has team activity from the tests above (Matt's claim/Issac's finish, notes), 158506 has none
+  assert (select count(*) from tract_activity where tract = '36081019400') = 1, 'activity for a worked tract';
+  assert (select count(*) from tract_activity where tract = '36103158506') = 0, 'no activity for an untouched tract';
+end $$;
+reset role;
+select pg_temp.as_user('issac@x.com');
+update saved_turfs set plan_date = null;          -- can't touch Matt's (RLS: 0 rows)
+delete from saved_turfs;                           -- can't remove Matt's
+do $$ begin
+  assert (select count(*) from team_saved_turfs where rep = 'Matt') = 2, 'Issac sees but cannot change Matt''s saved turfs';
+  assert (select plan_date from team_saved_turfs where tract = '36103158506') is not null, 'Matt''s date untouched';
+end $$;
+reset role;
+select pg_temp.as_user('matt@x.com');
+delete from saved_turfs where tract = '36081019400';
+do $$ begin assert (select count(*) from team_saved_turfs where rep = 'Matt') = 1, 'Matt removed his own'; end $$;
+reset role;
+set role anon;
+select pg_temp.fails('select 1 from team_saved_turfs', 'anon read saved');
+select pg_temp.fails('select 1 from tract_activity', 'anon read activity');
+reset role;
+
 -- Someone leaves the team
 update reps set active = false where name = 'Matt';
 select pg_temp.as_user('matt@x.com');

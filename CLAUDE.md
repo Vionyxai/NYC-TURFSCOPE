@@ -60,7 +60,7 @@ Report what you changed and why after the first run.
 2. Tune `config/scoring.json` from real knock results (Giovani will supply)
 3. Phase 2: set `areas.json → active_phase: 2` (Brooklyn, Manhattan, Bronx, southern Westchester). Suffolk moved into phase 1 so all PSEG LI territory is covered.
 4. Nassau/Suffolk block-group scoring (ACS supports it; TIGERweb has a block group layer). Long Island walk lists are built from the NYS assessment roll (`m1-ingest/li_parcels.js`).
-5. ~~Knock tracking~~ built, plus turf claims, notes and pins: `supabase/` (SQL + setup guide), `m3-map/team.js`. Needs the Supabase project URL + publishable key in `config/supabase.json`.
+5. ~~Knock tracking~~ built, plus turf claims, notes, pins and saved turfs (003): `supabase/` (SQL + setup guide), `m3-map/team.js`. Needs the Supabase project URL + publishable key in `config/supabase.json`.
 6. `m5-freshness/` n8n jobs (see its README)
 
 ## Glossary
