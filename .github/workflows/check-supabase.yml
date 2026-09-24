@@ -1,0 +1,14 @@
+# Checks the live Supabase project: tables installed, security on, sign-ups locked.
+# Run it from GitHub: Actions tab → Check Supabase → Run workflow.
+name: Check Supabase
+on:
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+      - run: npm run check:supabase

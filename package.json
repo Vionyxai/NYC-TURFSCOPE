@@ -15,6 +15,7 @@
     "dev": "node scripts/serve.js",
     "test": "node test/run.js",
     "test:sql": "bash scripts/test-sql.sh",
-    "app-config": "node scripts/app-config.js"
+    "app-config": "node scripts/app-config.js",
+    "check:supabase": "node scripts/check-supabase.js"
   }
 }
