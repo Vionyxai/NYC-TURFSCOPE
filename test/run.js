@@ -73,6 +73,10 @@ t('languages and birthplaces read from Census labels', () => {
   assert.equal(shortName('Ukrainian or other Slavic languages'), 'Ukrainian & related');
   assert.equal(shortName('Other Indo-European languages'), 'Other Indo-European languages');
   assert.equal(shortName('Tagalog (incl. Filipino)', { Tagalog: 'Tagalog/Filipino' }), 'Tagalog/Filipino');
+  const names = readCfg('scoring.json').targeting.people.names;
+  assert.equal(shortName('Other Indo-European languages', names), 'Bengali, Hindi, Urdu, Italian, Greek…');   // C16001 group, offered in the filter
+  assert.equal(shortName('Russian, Polish, or other Slavic languages', names), 'Russian & related');
+  assert.equal(shortName('Other and unspecified languages', names), 'Other and unspecified languages');
 });
 t('who lives here: languages, born abroad, race mix (display only)', () => {
   const meta = { languages: languageCodes(LANG_LABELS, 'B16001'), birthplaces: birthplaceCodes(BIRTH_LABELS) };

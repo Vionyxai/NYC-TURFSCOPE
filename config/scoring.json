@@ -36,13 +36,13 @@
     "oil_focus": { "label": "PSEG LI · 40%+ oil", "utility": "psegli", "oil_band": "oil40" },
     "oil_color_breaks": [0.10, 0.25, 0.40, 0.60],
     "people": {
-      "_readme": "Neighborhood facts from the Census ACS, per tract, never per house. Languages: B16001 (detailed) or C16001; a language is listed on the tract card when at least language_list_min_share of residents (age 5+) speak it at home, and the Target filter 'Language at home' keeps tracts where a picked language is at least language_filter_min_share. language_filter_choices = how many languages the filter offers (the most spoken across the turf). Born abroad: B05006 place of birth; the card lists up to birthplace_max countries with at least birthplace_min_share of residents. The race / Hispanic mix (B03002) is shown on the card for background only and is never used in the TurfScore or any filter. names renames a Census label for display.",
+      "_readme": "Neighborhood facts from the Census ACS, per tract, never per house. Languages: B16001 (detailed) or C16001; a language is listed on the tract card when at least language_list_min_share of residents (age 5+) speak it at home, and the Target filter 'Language at home' keeps tracts where a picked language is at least language_filter_min_share. language_filter_choices = how many languages the filter offers (the most spoken across the turf). Born abroad: B05006 place of birth; the card lists up to birthplace_max countries with at least birthplace_min_share of residents. The race / Hispanic mix (B03002) is shown on the card for background only and is never used in the TurfScore or any filter. names renames a Census label for display. When the detailed table isn't published for tracts the map uses C16001, which groups South Asian and many European languages together as 'Other Indo-European languages'.",
       "language_list_min_share": 0.02,
       "language_filter_min_share": 0.15,
       "language_filter_choices": 10,
       "birthplace_min_share": 0.02,
       "birthplace_max": 3,
-      "names": { "Tagalog": "Tagalog/Filipino", "Haitian": "Haitian Creole" }
+      "names": { "Tagalog": "Tagalog/Filipino", "Haitian": "Haitian Creole", "French, Haitian, or Cajun": "French/Haitian Creole", "Other Indo-European languages": "Bengali, Hindi, Urdu, Italian, Greek…", "Other Asian and Pacific Island languages": "Other Asian languages" }
     },
     "size_bands": [
       { "key": "small",  "label": "Small",  "max_sqft": 1500, "max_rooms": 5.5 },

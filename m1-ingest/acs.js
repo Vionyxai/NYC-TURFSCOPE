@@ -159,6 +159,9 @@ export async function runACS() {
       if (!meta.total || !meta.items.length) throw new Error('no language lines found in the labels');
       const vars = [meta.total, meta.english, ...meta.items.flatMap((x) => [x.total, x.lep])].filter(Boolean);
       for (const c of activeCounties()) await fetchChunked(vars, c);
+      // Some detailed tables answer for tracts but with every value blank (published for bigger areas only).
+      const filled = [...rows.values()].filter((r) => r.v[meta.total] > 0).length;
+      if (filled < rows.size / 2) throw new Error(`only ${filled} of ${rows.size} tracts have values`);
       languages = meta;
       log(`ACS · languages from ${table}: ${meta.items.length} languages`);
       break;
