@@ -32,7 +32,6 @@ export const MAIN_VARS = [
   'B25003_001E', 'B25003_002E',                    // tenure: occupied, owner-occupied
   ...series('B25007', 2, 11),                      // owner-occupied households by age of householder
   'B25018_001E',                                   // median rooms (house size outside NYC)
-  ...RACE_VARS,                                    // race / Hispanic origin (card only: never scored or filtered)
 ];
 
 // Pick B25034 (year built) variables for decades before 1980 by reading labels,
@@ -127,7 +126,7 @@ export async function runACS() {
   const rows = new Map();
 
   for (const c of activeCounties()) {
-    for (const vars of [MAIN_VARS, ageVars]) {
+    for (const vars of [MAIN_VARS, ageVars, RACE_VARS]) {   // the API takes at most 50 variables per request (NAME counts)
       const url = `${src.base}/${year}/acs/acs5?get=NAME,${vars.join(',')}&for=tract:*&in=state:${state_fips}&in=county:${c.fips}${key}`;
       const data = rowsToObjects(await censusJSON(url));
       for (const r of data) {

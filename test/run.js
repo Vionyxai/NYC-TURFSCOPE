@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { ROOT } from '../lib/util.js';
-import { pre1980Codes, languageCodes, birthplaceCodes, MAIN_VARS } from '../m1-ingest/acs.js';
+import { pre1980Codes, languageCodes, birthplaceCodes, MAIN_VARS, RACE_VARS } from '../m1-ingest/acs.js';
 import { plutoTractGeoid } from '../m1-ingest/pluto.js';
 import { isDac, detectDacFields, parseRelationship } from '../m1-ingest/dac.js';
 import { incomeBand, dacFor2020, lotUtility, lotScore, ownerAgeShares, sizeBand, homeAgeBand, lotBusiness, tractPeople, shortName } from '../m2-score/score.js';
@@ -88,7 +88,8 @@ t('who lives here: languages, born abroad, race mix (display only)', () => {
   assert.deepEqual(JSON.parse(JSON.stringify(p.birthplaces)), [['Dominican Republic', 0.15], ['Guyana', 0.06]]);
   const none = tractPeople({}, {}, {});
   assert.equal(none.race, null); assert.equal(none.languages, null); assert.equal(none.born_abroad, null);
-  assert.ok(MAIN_VARS.includes('B03002_012E'));
+  assert.ok(RACE_VARS.includes('B03002_012E'));
+  for (const vars of [MAIN_VARS, RACE_VARS]) assert.ok(vars.length + 1 <= 50, `Census allows 50 variables per request (with NAME), got ${vars.length + 1}`);
 });
 t('PLUTO bct2020 → GEOID', () => {
   assert.equal(plutoTractGeoid('4012300'), '36081012300');
