@@ -1,6 +1,6 @@
 // m2 / pure scoring functions. No I/O — easy to test and tune.
 import { clamp01, round } from '../lib/util.js';
-import { B19001_BRACKETS } from '../m1-ingest/acs.js';
+import { B19001_BRACKETS, RACE_GROUPS } from '../m1-ingest/acs.js';
 
 export function incomeBand(median, bands) {
   if (median == null) return null;
@@ -139,4 +139,58 @@ export function lotScore(lot, tractScore, lotCfg) {
   if (lot.year && lot.year > 1800 && lot.year < 1980) s += lotCfg.pre1980_bonus;
   if (lot.fuel === 'oil') s += lotCfg.oil_on_record_bonus || 0;   // assessor records say this house heats with oil
   return Math.max(0, Math.min(100, Math.round(s)));
+}
+
+// Short display name for a Census language or country label:
+// "Chinese (incl. Mandarin, Cantonese)" → "Chinese", "China, excluding Hong Kong and Taiwan" → "China",
+// "Ukrainian or other Slavic languages" → "Ukrainian & related". config can rename any of them.
+export function shortName(name, renames = {}) {
+  if (renames[name]) return renames[name];
+  let s = String(name).replace(/\s*\([^)]*\)/g, '').replace(/,\s*excluding.*$/i, '').trim();
+  if (!/^Other\b/i.test(s) && /\bother\b/i.test(s)) s = `${s.split(/,| or /)[0].trim()} & related`;
+  return renames[s] || s;
+}
+
+// Who lives in a tract, from the Census (neighborhood level, never about one house):
+// languages spoken at home, how many were born abroad and where, and the race / Hispanic mix.
+// The race mix is shown on the tract card for background only. It is never scored or filtered.
+export function tractPeople(v, meta, cfg = {}) {
+  const share = (x, tot) => (tot > 0 && x != null ? x / tot : null);
+  const names = cfg.names || {};
+  const out = { race: null, languages: null, english_only: null, limited_english: null, born_abroad: null, birthplaces: null };
+
+  const pop = v.B03002_001E;
+  if (pop > 0) {
+    out.race = {};
+    for (const [k, codes] of Object.entries(RACE_GROUPS)) out.race[k] = round(codes.reduce((s, c) => s + (v[`B03002_${c}E`] || 0), 0) / pop);
+  }
+
+  const L = meta?.languages;
+  const tot5 = L ? v[L.total] : null;
+  if (L && tot5 > 0) {
+    out.english_only = round(share(v[L.english], tot5));
+    let lep = 0;
+    const by = new Map();
+    for (const it of L.items) {
+      lep += v[it.lep] || 0;
+      const n = shortName(it.name, names);
+      by.set(n, (by.get(n) || 0) + (v[it.total] || 0));
+    }
+    out.limited_english = round(lep / tot5);
+    out.languages = [...by].map(([n, x]) => [n, round(x / tot5)])
+      .filter(([, s]) => s >= (cfg.language_list_min_share ?? 0.02))
+      .sort((a, b) => b[1] - a[1]);
+  }
+
+  const B = meta?.birthplaces;
+  if (B && pop > 0 && v[B.total] != null) {
+    out.born_abroad = round(Math.min(1, v[B.total] / pop));
+    const by = new Map();
+    for (const it of B.items) { const n = shortName(it.name, names); by.set(n, (by.get(n) || 0) + (v[it.code] || 0)); }
+    out.birthplaces = [...by].map(([n, x]) => [n, round(x / pop)])
+      .filter(([, s]) => s >= (cfg.birthplace_min_share ?? 0.02))
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, cfg.birthplace_max ?? 3);
+  }
+  return out;
 }

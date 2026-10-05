@@ -3,7 +3,7 @@ import {
   config, readJSON, readJSONIfExists, writeJSON, raw, out, log, warn, round, activeCounties,
 } from '../lib/util.js';
 import { pointInFeatureCollection, roundGeometry, shareInside } from '../lib/geo.js';
-import { tractMetrics, scoreTract, incomeBand, dacFor2020, lotUtility, sizeBand, homeAgeBand, lotBusiness } from './score.js';
+import { tractMetrics, scoreTract, incomeBand, dacFor2020, lotUtility, sizeBand, homeAgeBand, lotBusiness, tractPeople } from './score.js';
 
 const scoring = config('scoring.json');
 const util = config('utilities.json');
@@ -88,6 +88,9 @@ const droppedIds = { boundary: [], noacs: [] };
 const borrowed = [];
 let ownerTot = 0;
 const ownerAgeSum = {};
+const peopleCfg = scoring.targeting?.people || {};
+const langSpeakers = new Map();   // turf-wide speakers per language, to pick the filter's choices
+if (!acs.languages) warn('No language data in acs_tracts.json — rerun npm run ingest to add languages at home.');
 
 for (const f of geo.features) {
   const p = f.properties || {};
@@ -153,6 +156,12 @@ for (const f of geo.features) {
     for (const [k, v] of Object.entries(m.owner_age)) ownerAgeSum[k] = (ownerAgeSum[k] || 0) + v * m.owner_households;
   }
 
+  const people = tractPeople(a.v, acs, peopleCfg);
+  if (people.languages && !estimatedFrom) {
+    const tot5 = a.v[acs.languages.total] || 0;
+    for (const [n, x] of people.languages) langSpeakers.set(n, (langSpeakers.get(n) || 0) + x * tot5);
+  }
+
   Object.assign(m, dacFor2020(geoid, relIndex, dac10));
   const s = scoreTract(m, utility, scoring);
 
@@ -186,6 +195,7 @@ for (const f of geo.features) {
       size_band,
       size_basis,
       size_value,
+      ...people,
       fuel: m.fuel ? Object.fromEntries(Object.entries(m.fuel).map(([k, v]) => [k, round(v)])) : null,
       dac: m.dac,
       dac_share: m.dac_share,
@@ -219,6 +229,10 @@ writeJSON(out('summary.json'), {
     oil_focus: scoring.targeting?.oil_focus || null,
     oil_color_breaks: scoring.targeting?.oil_color_breaks || [0.1, 0.25, 0.4, 0.6],
     size_bands: scoring.targeting?.size_bands || [],
+    // Languages a rep can target, most spoken across the turf first.
+    languages: [...langSpeakers].filter(([n]) => !/^Other\b/i.test(n)).sort((x, y) => y[1] - x[1])
+      .slice(0, peopleCfg.language_filter_choices ?? 10).map(([n]) => n),
+    language_min_share: peopleCfg.language_filter_min_share ?? 0.15,
     // Turf-wide share of homeowners in each age band, so the map can show "more than usual".
     owner_age_avg: Object.fromEntries(Object.entries(ownerAgeSum).map(([k, v]) => [k, round(v / ownerTot, 3)])),
   },

@@ -40,6 +40,7 @@ Two files control scope:
 - Target (rep picks any mix; none picked in a group = any): income band (tract median), home age (Before 1940 / 1940–79 / 1980–99 / 2000+: median year built of 1–4 family lots in NYC, ACS B25035 elsewhere; walk lists filter each house by its own year), homeowner age (rough estimate) (tracts where owners in the picked ages — Under 45 / 45–64 / 65+, ACS B25007 — are more common than turf-wide), house size (Small / Medium / Large: median building sq ft of 1–4 family lots from PLUTO in NYC, ACS median rooms B25018 elsewhere). Bands live in `config/scoring.json → targeting`.
 - Live location: the locate button follows your GPS position and shows the tract you're standing in (score, utility). The position stays on the phone; nothing is sent or stored.
 - Renters: every card shows owners / renters; tracts with ≥ 50% renter households get a renter-heavy badge. In NYC the card also counts 2–4 family homes (which have rental units) and homes with a business.
+- Who lives here (tract card, Census ACS, neighborhood level only): languages spoken at home (B16001, falls back to C16001) with the share who speak English less than very well, share born abroad with the top countries of birth (B05006), and the race / Hispanic mix (B03002). Target has a **Language at home** group: tracts where a picked language is spoken by 15%+ of residents. The race mix is background only: never in the TurfScore, never a filter. No individual-level inference (e.g. guessing race from surnames) — that needs owner names, which the app never stores. Settings: `config/scoring.json → targeting.people`.
 - Tapping a tract opens a card: homes, median income plus band, median year built, % pre-1980, % owner-occupied, heating fuel mix, DAC, and the score breakdown
 
 **Walk lists** (Queens from NYC PLUTO; Nassau and Suffolk from the NYS assessment roll)
@@ -75,6 +76,9 @@ Two files control scope:
 | Units in structure | ACS 5-yr B25024 | For home estimates outside NYC |
 | Tenure | ACS 5-yr B25003 | |
 | Homeowner age | ACS 5-yr B25007 | Owner households by age of householder |
+| Languages at home | ACS 5-yr B16001 (or C16001) | Tract card + Language target |
+| Born abroad / country of birth | ACS 5-yr B05006 | Tract card |
+| Race / Hispanic origin | ACS 5-yr B03002 | Tract card only (background) |
 | Rooms | ACS 5-yr B25018 | Median rooms; house size outside NYC |
 | DAC | data.ny.gov `2e6c-s6fp` (2010 tracts) | |
 | Long Island homes | NYS ITS Tax Parcel Centroid Points (2025 roll) | Address + home type for every 1–3 family property; year built, sq ft and heating fuel where the town assessor reports them (parts of Suffolk). Owner names and mailing addresses are never requested |

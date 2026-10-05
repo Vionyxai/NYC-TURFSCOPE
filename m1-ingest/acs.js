@@ -12,6 +12,17 @@ export const B19001_BRACKETS = [
 const pad3 = (n) => String(n).padStart(3, '0');
 const series = (table, from, to) => Array.from({ length: to - from + 1 }, (_, i) => `${table}_${pad3(from + i)}E`);
 
+// B03002 Hispanic or Latino origin by race: total, then the groups shown on the tract card.
+// Display only. Race is never used in the TurfScore or in any filter.
+export const RACE_GROUPS = {
+  hispanic: ['012'],            // Hispanic or Latino, any race
+  white: ['003'],               // not Hispanic: White alone
+  black: ['004'],               // not Hispanic: Black alone
+  asian: ['006'],               // not Hispanic: Asian alone
+  other: ['005', '007', '008', '009'], // not Hispanic: Native American, Pacific Islander, other, two or more
+};
+export const RACE_VARS = ['B03002_001E', ...Object.values(RACE_GROUPS).flat().map((c) => `B03002_${c}E`)];
+
 export const MAIN_VARS = [
   'B19013_001E',                                   // median household income
   'B19001_001E', ...B19001_BRACKETS.map(([c]) => `B19001_${c}E`), // income distribution
@@ -21,6 +32,7 @@ export const MAIN_VARS = [
   'B25003_001E', 'B25003_002E',                    // tenure: occupied, owner-occupied
   ...series('B25007', 2, 11),                      // owner-occupied households by age of householder
   'B25018_001E',                                   // median rooms (house size outside NYC)
+  ...RACE_VARS,                                    // race / Hispanic origin (card only: never scored or filtered)
 ];
 
 // Pick B25034 (year built) variables for decades before 1980 by reading labels,
@@ -35,6 +47,41 @@ export function pre1980Codes(groupVariables) {
     if (m && Number(m[2]) < 1980) codes.push(code);
   }
   return codes.sort();
+}
+
+// Language spoken at home (B16001 detailed, or C16001 collapsed). Read from labels, like
+// pre1980Codes, so line numbers can change between vintages. Labels look like
+//   Estimate!!Total:                                     → people 5 and older
+//   Estimate!!Total:!!Speak only English
+//   Estimate!!Total:!!Spanish:                           → speak Spanish at home
+//   Estimate!!Total:!!Spanish:!!Speak English less than "very well"
+export function languageCodes(groupVariables, table) {
+  const out = { table, total: null, english: null, items: [] };
+  const byName = new Map();
+  for (const [code, v] of Object.entries(groupVariables).sort(([a], [b]) => a.localeCompare(b))) {
+    if (!new RegExp(`^${table}_\\d{3}E$`).test(code)) continue;
+    const parts = String(v.label || '').split('!!').map((x) => x.replace(/:$/, '').trim());
+    if (parts.length === 2 && /^Total$/i.test(parts[1])) out.total = code;
+    else if (parts.length === 3 && /only English/i.test(parts[2])) out.english = code;
+    else if (parts.length === 3) { const it = { name: parts[2], total: code, lep: null }; byName.set(parts[2], it); out.items.push(it); }
+    else if (parts.length === 4 && /less than/i.test(parts[3]) && byName.has(parts[2])) byName.get(parts[2]).lep = code;
+  }
+  return out;
+}
+
+// Place of birth for people born abroad (B05006): every country line (a label with nothing under it).
+// "Other ..." catch-all lines are skipped because they don't name a country.
+export function birthplaceCodes(groupVariables) {
+  const rows = Object.entries(groupVariables)
+    .filter(([code]) => /^B05006_\d{3}E$/.test(code))
+    .map(([code, v]) => ({ code, label: String(v.label || '').replace(/:$/, '') }));
+  const total = rows.find((r) => r.label.split('!!').length === 2)?.code || null;
+  const items = rows
+    .filter((r) => r.label.split('!!').length > 2 && !rows.some((o) => o.label.startsWith(`${r.label}:!!`) || o.label.startsWith(`${r.label}!!`)))
+    .map((r) => ({ name: r.label.split('!!').pop().replace(/:$/, '').trim(), code: r.code }))
+    .filter((r) => !/^Other\b/i.test(r.name))
+    .sort((a, b) => a.code.localeCompare(b.code));
+  return { total, items };
 }
 
 // Census answers a missing/bad key with an HTML page. Turn that into a clear instruction.
@@ -93,7 +140,44 @@ export async function runACS() {
     log(`ACS · ${c.name}: ${[...rows.keys()].filter((g) => g.slice(2, 5) === c.fips).length} tracts`);
   }
 
-  writeJSON(raw('acs_tracts.json'), { year, pre1980_codes: pre, rows: [...rows.values()] });
+  // Languages at home and places of birth: big tables, so fetch them in chunks
+  // (the API takes at most 50 variables per request).
+  const groupVars = async (table) => (await fetchJSON(`${src.base}/${year}/acs/acs5/groups/${table}.json`)).variables;
+  const fetchChunked = async (vars, c) => {
+    for (let i = 0; i < vars.length; i += 45) {
+      const chunk = vars.slice(i, i + 45);
+      const url = `${src.base}/${year}/acs/acs5?get=${chunk.join(',')}&for=tract:*&in=state:${state_fips}&in=county:${c.fips}${key}`;
+      for (const r of rowsToObjects(await censusJSON(url))) {
+        const row = rows.get(`${r.state}${r.county}${r.tract}`);
+        if (row) for (const k of chunk) row.v[k] = num(r[k]);
+      }
+    }
+  };
+  let languages = null, birthplaces = null;
+  for (const table of src.language_tables || ['B16001', 'C16001']) {
+    try {
+      const meta = languageCodes(await groupVars(table), table);
+      if (!meta.total || !meta.items.length) throw new Error('no language lines found in the labels');
+      const vars = [meta.total, meta.english, ...meta.items.flatMap((x) => [x.total, x.lep])].filter(Boolean);
+      for (const c of activeCounties()) await fetchChunked(vars, c);
+      languages = meta;
+      log(`ACS · languages from ${table}: ${meta.items.length} languages`);
+      break;
+    } catch (e) {
+      warn(`ACS · ${table} languages unavailable for tracts (${e.message.split('\n')[0]}) — trying the next table`);
+    }
+  }
+  try {
+    const meta = birthplaceCodes(await groupVars('B05006'));
+    if (!meta.total || !meta.items.length) throw new Error('no country lines found in the labels');
+    for (const c of activeCounties()) await fetchChunked([meta.total, ...meta.items.map((x) => x.code)], c);
+    birthplaces = meta;
+    log(`ACS · places of birth (B05006): ${meta.items.length} countries`);
+  } catch (e) {
+    warn(`ACS · places of birth unavailable (${e.message.split('\n')[0]}) — the map will skip "born abroad"`);
+  }
+
+  writeJSON(raw('acs_tracts.json'), { year, pre1980_codes: pre, languages, birthplaces, rows: [...rows.values()] });
   return rows.size;
 }
 

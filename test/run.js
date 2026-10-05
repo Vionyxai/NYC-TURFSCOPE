@@ -6,10 +6,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { ROOT } from '../lib/util.js';
-import { pre1980Codes } from '../m1-ingest/acs.js';
+import { pre1980Codes, languageCodes, birthplaceCodes, MAIN_VARS } from '../m1-ingest/acs.js';
 import { plutoTractGeoid } from '../m1-ingest/pluto.js';
 import { isDac, detectDacFields, parseRelationship } from '../m1-ingest/dac.js';
-import { incomeBand, dacFor2020, lotUtility, lotScore, ownerAgeShares, sizeBand, homeAgeBand, lotBusiness } from '../m2-score/score.js';
+import { incomeBand, dacFor2020, lotUtility, lotScore, ownerAgeShares, sizeBand, homeAgeBand, lotBusiness, tractPeople, shortName } from '../m2-score/score.js';
 import { addrKey, compareLots, packWalk, unpackWalk, tractLocator } from '../m4-walklists/build.js';
 import { fuelKey, parcelToLot, statRange } from '../m1-ingest/li_parcels.js';
 import { pointInFeatureCollection, shareInside } from '../lib/geo.js';
@@ -32,6 +32,63 @@ t('pre1980 codes from labels', () => {
     B25034_007M: { label: 'Margin of Error' },
   };
   assert.deepEqual(pre1980Codes(vars), ['B25034_007E', 'B25034_011E']);
+});
+// Census labels the way the API's groups/<table>.json returns them.
+const LANG_LABELS = {
+  B16001_001E: { label: 'Estimate!!Total:' },
+  B16001_002E: { label: 'Estimate!!Total:!!Speak only English' },
+  B16001_003E: { label: 'Estimate!!Total:!!Spanish:' },
+  B16001_004E: { label: 'Estimate!!Total:!!Spanish:!!Speak English "very well"' },
+  B16001_005E: { label: 'Estimate!!Total:!!Spanish:!!Speak English less than "very well"' },
+  B16001_066E: { label: 'Estimate!!Total:!!Bengali:' },
+  B16001_068E: { label: 'Estimate!!Total:!!Bengali:!!Speak English less than "very well"' },
+  B16001_075E: { label: 'Estimate!!Total:!!Chinese (incl. Mandarin, Cantonese):' },
+  B16001_077E: { label: 'Estimate!!Total:!!Chinese (incl. Mandarin, Cantonese):!!Speak English less than "very well"' },
+  B16001_003M: { label: 'Margin of Error!!Total:!!Spanish:' },
+};
+const BIRTH_LABELS = {
+  B05006_001E: { label: 'Estimate!!Total:' },
+  B05006_124E: { label: 'Estimate!!Total:!!Americas:' },
+  B05006_140E: { label: 'Estimate!!Total:!!Americas:!!Latin America:!!Caribbean:' },
+  B05006_145E: { label: 'Estimate!!Total:!!Americas:!!Latin America:!!Caribbean:!!Dominican Republic' },
+  B05006_147E: { label: 'Estimate!!Total:!!Americas:!!Latin America:!!Caribbean:!!Jamaica' },
+  B05006_151E: { label: 'Estimate!!Total:!!Americas:!!Latin America:!!Caribbean:!!Other Caribbean' },
+  B05006_172E: { label: 'Estimate!!Total:!!Americas:!!Latin America:!!South America:!!Guyana' },
+  B05006_050E: { label: 'Estimate!!Total:!!Asia:!!Eastern Asia:!!China:' },
+  B05006_051E: { label: 'Estimate!!Total:!!Asia:!!Eastern Asia:!!China:!!China, excluding Hong Kong and Taiwan' },
+  B05006_052E: { label: 'Estimate!!Total:!!Asia:!!Eastern Asia:!!China:!!Hong Kong' },
+};
+t('languages and birthplaces read from Census labels', () => {
+  const L = languageCodes(LANG_LABELS, 'B16001');
+  assert.equal(L.total, 'B16001_001E');
+  assert.equal(L.english, 'B16001_002E');
+  assert.deepEqual(L.items.map((x) => [x.name, x.total, x.lep]), [
+    ['Spanish', 'B16001_003E', 'B16001_005E'], ['Bengali', 'B16001_066E', 'B16001_068E'],
+    ['Chinese (incl. Mandarin, Cantonese)', 'B16001_075E', 'B16001_077E']]);
+  const B = birthplaceCodes(BIRTH_LABELS);
+  assert.equal(B.total, 'B05006_001E');
+  assert.deepEqual(B.items.map((x) => x.name), ['China, excluding Hong Kong and Taiwan', 'Hong Kong', 'Dominican Republic', 'Jamaica', 'Guyana']);
+  assert.equal(shortName('Chinese (incl. Mandarin, Cantonese)'), 'Chinese');
+  assert.equal(shortName('China, excluding Hong Kong and Taiwan'), 'China');
+  assert.equal(shortName('Ukrainian or other Slavic languages'), 'Ukrainian & related');
+  assert.equal(shortName('Other Indo-European languages'), 'Other Indo-European languages');
+  assert.equal(shortName('Tagalog (incl. Filipino)', { Tagalog: 'Tagalog/Filipino' }), 'Tagalog/Filipino');
+});
+t('who lives here: languages, born abroad, race mix (display only)', () => {
+  const meta = { languages: languageCodes(LANG_LABELS, 'B16001'), birthplaces: birthplaceCodes(BIRTH_LABELS) };
+  const v = { B03002_001E: 1000, B03002_003E: 200, B03002_004E: 100, B03002_006E: 300, B03002_009E: 50, B03002_012E: 350,
+    B16001_001E: 900, B16001_002E: 360, B16001_003E: 270, B16001_005E: 90, B16001_066E: 180, B16001_068E: 72, B16001_075E: 9, B16001_077E: 0,
+    B05006_001E: 450, B05006_145E: 150, B05006_147E: 10, B05006_172E: 60, B05006_051E: 5, B05006_052E: 0 };
+  const p = tractPeople(v, meta, { language_list_min_share: 0.02, birthplace_min_share: 0.02, birthplace_max: 3 });
+  assert.deepEqual({ ...p.race }, { hispanic: 0.35, white: 0.2, black: 0.1, asian: 0.3, other: 0.05 });
+  assert.equal(p.english_only, 0.4);
+  assert.equal(p.limited_english, 0.18);
+  assert.deepEqual(JSON.parse(JSON.stringify(p.languages)), [['Spanish', 0.3], ['Bengali', 0.2]]);   // Chinese 1% is under the list cut-off
+  assert.equal(p.born_abroad, 0.45);
+  assert.deepEqual(JSON.parse(JSON.stringify(p.birthplaces)), [['Dominican Republic', 0.15], ['Guyana', 0.06]]);
+  const none = tractPeople({}, {}, {});
+  assert.equal(none.race, null); assert.equal(none.languages, null); assert.equal(none.born_abroad, null);
+  assert.ok(MAIN_VARS.includes('B03002_012E'));
 });
 t('PLUTO bct2020 → GEOID', () => {
   assert.equal(plutoTractGeoid('4012300'), '36081012300');
@@ -223,11 +280,15 @@ const acsV = (o) => ({
   B25040_001E: 1000, B25040_002E: 400, B25040_003E: 50, B25040_004E: 100, B25040_005E: 450, B25040_010E: 0,
   B25035_001E: 1955, B25024_001E: 1200, B25024_002E: 600, B25024_003E: 100, B25024_004E: 200, B25024_005E: 70,
   B25003_001E: 1000, B25003_002E: 700, B25034_001E: 1000, B25034_007E: 300, B25034_011E: 400,
-  B25007_002E: 700, B25007_004E: 70, B25007_006E: 210, B25007_008E: 140, B25007_009E: 280, B25018_001E: 6.2, ...o,
+  B25007_002E: 700, B25007_004E: 70, B25007_006E: 210, B25007_008E: 140, B25007_009E: 280, B25018_001E: 6.2,
+  B03002_001E: 2000, B03002_003E: 800, B03002_004E: 200, B03002_006E: 400, B03002_012E: 600,
+  B16001_001E: 1900, B16001_002E: 1100, B16001_003E: 400, B16001_005E: 100, B16001_066E: 300, B16001_068E: 150, B16001_075E: 100, B16001_077E: 50,
+  B05006_001E: 700, B05006_145E: 200, B05006_172E: 150, B05006_051E: 60, ...o,
 });
 fs.writeFileSync(path.join(RAW, 'acs_tracts.json'), JSON.stringify({
   year: 2024, pre1980_codes: ['B25034_007E', 'B25034_011E'],
-  rows: Object.values(T).filter((g) => g !== T.suffolkSplit).map((g) => ({ geoid: g, name: g, v: acsV(g === T.nassau ? { B19013_001E: 140000, B25007_009E: 0, B25007_004E: 350 } : {}) })),
+  languages: languageCodes(LANG_LABELS, 'B16001'), birthplaces: birthplaceCodes(BIRTH_LABELS),
+  rows: Object.values(T).filter((g) => g !== T.suffolkSplit).map((g) => ({ geoid: g, name: g, v: acsV(g === T.nassau ? { B19013_001E: 140000, B25007_009E: 0, B25007_004E: 350, B16001_003E: 50, B16001_066E: 0, B16001_075E: 400 } : {}) })),
 }));
 
 const lot = (tract, address, zip, units, year, lon, lat) => ({ bbl: address, boro: 'QN', block: 1, address, zip, cls: units <= 1 ? 'A1' : units === 2 ? 'B1' : 'C0', units, year, sqft: units <= 1 ? 1400 : 2800, lat, lon, tract });
@@ -318,6 +379,23 @@ t('targeting: homeowner age, house size, turf-wide age average', () => {
   assert.ok(summary.targeting.oil_bands.some((b) => b.key === summary.targeting.oil_focus.oil_band), 'oil focus points at a real band');
   assert.equal(summary.targeting.oil_color_breaks.length, 4);
   assert.ok(summary.targeting.owner_age_avg['65p'] > 0 && summary.targeting.owner_age_avg['65p'] < 0.4);
+});
+t('who lives here on tracts + language filter choices in the summary', () => {
+  const q = by[T.queens];
+  assert.equal(q.english_only, 0.58);
+  assert.deepEqual(q.languages.map(([n]) => n), ['Spanish', 'Bengali', 'Chinese']);
+  assert.equal(q.limited_english, 0.16);
+  assert.equal(q.born_abroad, 0.35);
+  assert.deepEqual(q.birthplaces.map(([n]) => n), ['Dominican Republic', 'Guyana', 'China']);
+  assert.equal(q.race.hispanic, 0.3);
+  assert.equal(by[T.nassau].languages[0][0], 'Chinese');
+  assert.deepEqual(by[T.suffolkSplit].languages, by[T.suffolk].languages);   // borrowed with the rest of the ACS data
+  const summary = JSON.parse(fs.readFileSync(path.join(OUT, 'summary.json'), 'utf8'));
+  assert.deepEqual(summary.targeting.languages, ['Spanish', 'Bengali', 'Chinese']);   // most speakers across the turf first
+  assert.equal(summary.targeting.language_min_share, 0.15);
+  // Race is background only: not in the score parts, not a filter choice.
+  assert.ok(!Object.keys(q.parts).some((k) => /race|hispanic|white|black|asian/.test(k)));
+  assert.ok(!JSON.stringify(summary.targeting).match(/race|hispanic/i));
 });
 t('home age, renters and home businesses on tracts', () => {
   const q = by[T.queens];
