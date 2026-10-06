@@ -5,7 +5,7 @@
   "counties": {
     "081": { "name": "Queens",      "nyc": true,  "borough": "QN", "phase": 1 },
     "059": { "name": "Nassau",      "nyc": false,                  "phase": 1 },
-    "047": { "name": "Brooklyn",    "nyc": true,  "borough": "BK", "phase": 2 },
+    "047": { "name": "Brooklyn",    "nyc": true,  "borough": "BK", "phase": 1 },
     "061": { "name": "Manhattan",   "nyc": true,  "borough": "MN", "phase": 2 },
     "005": { "name": "Bronx",       "nyc": true,  "borough": "BX", "phase": 2 },
     "103": { "name": "Suffolk",     "nyc": false,                  "phase": 1 },

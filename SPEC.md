@@ -16,8 +16,8 @@ For any piece of turf it answers four questions: where the homes are, how many, 
 
 ## 1. Scope
 
-- **Phase 1 (build now):** Queens (address-level) + all of PSEG Long Island's territory: Nassau and Suffolk (tract-level) and the Rockaways
-- **Phase 2:** Brooklyn, Manhattan, Bronx, southern Westchester Sound shore (Yonkers → Port Chester)
+- **Phase 1 (build now):** Queens and Brooklyn (address-level, Con Ed) + all of PSEG Long Island's territory: Nassau and Suffolk (tract-level) and the Rockaways
+- **Phase 2:** Manhattan, Bronx, southern Westchester Sound shore (Yonkers → Port Chester)
 - **Out:** Staten Island (for now), upstate, Connecticut
 
 Two files control scope:
