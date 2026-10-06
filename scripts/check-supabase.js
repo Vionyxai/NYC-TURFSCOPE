@@ -28,12 +28,16 @@ else {
 
 // Logged out, the anon key must be refused on every team table. The error code tells us the SQL ran:
 // 42501 = permission denied (table exists, locked) · PGRST205/42P01 = table doesn't exist yet.
-for (const t of ['reps', 'knocks', 'turf_log', 'notes', 'latest_knocks', 'turf_status', 'team_notes', 'tract_progress', 'rep_stats']) {
+// Which SQL file creates each table/view, so a missing one names the file to run.
+const FROM = { saved_turfs: '003_saved_turfs.sql', team_saved_turfs: '003_saved_turfs.sql', tract_activity: '003_saved_turfs.sql',
+  area_tags: '005_area_tags.sql', team_tags: '005_area_tags.sql' };
+for (const t of ['reps', 'knocks', 'turf_log', 'notes', 'latest_knocks', 'turf_status', 'team_notes', 'tract_progress', 'rep_stats', ...Object.keys(FROM)]) {
+  const file = `supabase/${FROM[t] || '001_team_tracking.sql'}`;
   const r = await get(`/rest/v1/${t}?select=*&limit=1`);
   const code = r.body && r.body.code;
-  if (r.status === 200) bad(`${t}: readable while logged out: SECURITY PROBLEM, re-run supabase/001_team_tracking.sql`);
+  if (r.status === 200) bad(`${t}: readable while logged out: SECURITY PROBLEM, re-run ${file}`);
   else if (code === '42501' || r.status === 401 || r.status === 403) ok(`${t}: exists and is locked to logged-in reps`);
-  else if (code === 'PGRST205' || code === '42P01' || r.status === 404) bad(`${t}: not found. Run supabase/001_team_tracking.sql in the SQL Editor`);
+  else if (code === 'PGRST205' || code === '42P01' || r.status === 404) bad(`${t}: not found. Run ${file} in the SQL Editor`);
   else bad(`${t}: unexpected answer HTTP ${r.status} ${JSON.stringify(r.body)}`);
 }
 console.log(problems ? `\n${problems} thing(s) to fix: see supabase/README.md` : '\nAll good: Supabase is ready. Next: create the 4 logins and link their emails (README steps 3–4).');
