@@ -1,0 +1,17 @@
+# TEMPORARY: inspect the NYC DOF exemption dataset. Removed after use.
+name: Probe
+on:
+  push:
+    branches: [claude/code-review-testing-q7elwy]
+    paths: [.github/workflows/probe.yml]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          B=https://data.cityofnewyork.us
+          echo "== catalog search: exemption"; curl -s "https://api.us.socrata.com/api/catalog/v1?domains=data.cityofnewyork.us&q=property%20exemption&limit=8" | jq -r '.results[] | [.resource.id, .resource.name, .resource.updatedAt] | @tsv'
+          echo "== muvi-b6kx columns"; curl -s "$B/api/views/muvi-b6kx.json" | jq -r '.name, .rowsUpdatedAt, (.columns[] | [.fieldName, .name, .dataTypeName] | @tsv)'
+          echo "== sample"; curl -s "$B/resource/muvi-b6kx.json?\$limit=3" | jq -c '.[]'
+          echo "== code counts (top 25)"; curl -s -G "$B/resource/muvi-b6kx.json" --data-urlencode '$select=exmp_code,count(*)' --data-urlencode '$group=exmp_code' --data-urlencode '$order=count(*) DESC' --data-urlencode '$limit=25' | jq -c '.[]'
+          echo "== years"; curl -s -G "$B/resource/muvi-b6kx.json" --data-urlencode '$select=year,period,count(*)' --data-urlencode '$group=year,period' --data-urlencode '$order=year DESC' --data-urlencode '$limit=10' | jq -c '.[]'
