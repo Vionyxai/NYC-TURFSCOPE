@@ -241,10 +241,17 @@ t('share of a polygon inside another', () => {
 t('Supabase SQL matches config/team.json (reps, statuses, follow-ups)', () => {
   const sql = fs.readFileSync(path.join(ROOT, 'supabase', '001_team_tracking.sql'), 'utf8');
   const team = readCfg('team.json');
-  const seeded = [...sql.match(/insert into public\.reps \(name, is_admin\) values (.+);/)[1].matchAll(/\('([^']+)', (true|false)\)/g)]
-    .map(([, name, admin]) => ({ name, admin: admin === 'true' }));
-  assert.deepEqual(seeded, team.reps.map(({ name, admin }) => ({ name, admin })));
-  assert.deepEqual(team.reps.map((r) => r.name), ['Issac', 'Matt', 'Cody', 'Gio']);
+  // Active reps after every migration: 001 seeds the team, later files deactivate or add reps.
+  const files = fs.readdirSync(path.join(ROOT, 'supabase')).filter((f) => /^\d{3}_.+\.sql$/.test(f)).sort();
+  const active = [];
+  for (const f of files) {
+    const q = fs.readFileSync(path.join(ROOT, 'supabase', f), 'utf8').replace(/--.*$/gm, '');
+    for (const m of q.matchAll(/insert into public\.reps \(name, is_admin\) values ([^;]+?)(?:on conflict[^;]*)?;/g))
+      for (const [, name, admin] of m[1].matchAll(/\('([^']+)', (true|false)\)/g)) if (!active.some((r) => r.name === name)) active.push({ name, admin: admin === 'true' });
+    for (const [, name] of q.matchAll(/update public\.reps set active = false where name = '([^']+)'/g)) active.splice(active.findIndex((r) => r.name === name), 1);
+  }
+  assert.deepEqual(active, team.reps.map(({ name, admin }) => ({ name, admin })));
+  assert.deepEqual(team.reps.map((r) => r.name), ['Issac', 'Matt', 'Gio', 'Kai']);
   const lists = (col) => [...sql.matchAll(new RegExp(`${col} in \\(([^)]+)\\)`, 'g'))].map((m) => [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]));
   assert.deepEqual(lists('status'), [team.knock_statuses.map((x) => x.key), team.turf_statuses.map((x) => x.key)]);
   assert.deepEqual(lists('followup'), [team.followups.map((x) => x.key)]);
@@ -460,8 +467,9 @@ const makeTeam = () => fakeSupabase({
   reps: [
     { id: 1, name: 'Issac', email: null, is_admin: false },
     { id: 2, name: 'Matt', email: 'matt@x.com', is_admin: false },
-    { id: 3, name: 'Cody', email: null, is_admin: false },
+    { id: 3, name: 'Cody', email: 'cody@x.com', is_admin: false, active: false },   // left the team
     { id: 4, name: 'Gio', email: 'Gio@x.com', is_admin: true },
+    { id: 5, name: 'Kai', email: null, is_admin: false },
   ],
   statuses: team.knock_statuses.map((s) => s.key),
 });

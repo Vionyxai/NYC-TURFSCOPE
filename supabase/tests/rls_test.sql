@@ -20,8 +20,9 @@ update reps set email = 'matt@x.com'  where name = 'Matt';
 update reps set email = 'gio@x.com'   where name = 'Gio';
 
 do $$ begin
-  assert (select count(*) from reps) = 4, 'four reps seeded';
-  assert (select string_agg(name, ',' order by id) from reps) = 'Issac,Matt,Cody,Gio', 'rep names';
+  assert (select count(*) from reps) = 5, 'four seeded + Kai';
+  assert (select string_agg(name, ',' order by id) from reps where active) = 'Issac,Matt,Gio,Kai', 'active reps after 004';
+  assert (select not active from reps where name = 'Cody'), 'Cody deactivated, row kept for history';
   assert (select name from reps where is_admin) = 'Gio', 'Gio is the only admin';
 end $$;
 
@@ -78,9 +79,16 @@ do $$ begin
 end $$;
 reset role;
 
--- Cody has no login email yet: locked out
+-- Kai has no login email yet: locked out
+select pg_temp.as_user('kai@x.com');
+do $$ begin assert (select count(*) from knocks) = 0, 'Kai locked out until email set'; end $$;
+reset role;
+
+-- Cody left (inactive): his old login sees nothing and can't post, even with his email still on file
+update reps set email = 'cody@x.com' where name = 'Cody';
 select pg_temp.as_user('cody@x.com');
-do $$ begin assert (select count(*) from knocks) = 0, 'Cody locked out until email set'; end $$;
+do $$ begin assert (select count(*) from knocks) = 0, 'Cody (inactive) sees nothing'; end $$;
+select pg_temp.fails($q$insert into knocks (client_id, tract, bbl, status) values (gen_random_uuid(), '36081000100', '4099999999', 'no_answer')$q$, 'inactive Cody posts a knock');
 reset role;
 
 -- Matt undoes his own
@@ -188,4 +196,4 @@ do $$ begin assert (select count(*) from knocks) = 0, 'inactive rep locked out';
 reset role;
 
 \o
-\echo RLS tests passed: 4 reps; logged-out/stranger blocked; knocks, turf and notes posted only as yourself; anyone can change any status; no edits; retries safe; undo own; admin override; no phone/email in notes; inactive locked out
+\echo RLS tests passed: 4 active reps (Cody out, Kai in); logged-out/stranger blocked; knocks, turf and notes posted only as yourself; anyone can change any status; no edits; retries safe; undo own; admin override; no phone/email in notes; inactive locked out

@@ -16,7 +16,7 @@ The pipeline needs a free Census API key (https://api.census.gov/data/key_signup
 
 ## Team tracking (4-man team)
 
-Reps sign in on their iPhones, claim turf (the map shows who has what), knock houses (No answer / Come back / Not interested / Interested / Booked), and leave notes and map pins for each other. Everything saves on the phone first (works with no signal), syncs to Supabase, and the whole team sees it. Setup: [`supabase/README.md`](supabase/README.md). The team (Issac, Matt, Cody, Gio) lives in `config/team.json`.
+Reps sign in on their iPhones, claim turf (the map shows who has what), knock houses (No answer / Come back / Not interested / Interested / Booked), and leave notes and map pins for each other. Everything saves on the phone first (works with no signal), syncs to Supabase, and the whole team sees it. Setup: [`supabase/README.md`](supabase/README.md). The team (Issac, Matt, Gio, Kai) lives in `config/team.json`.
 
 ## Deploy
 

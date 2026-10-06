@@ -4,7 +4,7 @@ About 15 minutes, all in the browser. You only do this once.
 
 ## How it's set up (plain version)
 
-- **`reps`:** one row per rep: Issac, Matt, Cody, Gio (Gio is the admin). Each row gets that rep's login email, and that's how a login becomes "Matt".
+- **`reps`:** one row per rep: Issac, Matt, Gio (the admin) and Kai. Cody left the team (his row stays, inactive, so his history keeps his name). Each row gets that rep's login email, and that's how a login becomes "Matt".
 - **`knocks`:** every tap on a door (house status), stamped with the rep who made it.
 - **`turf_log`:** every change to an area's status: **Claimed / Finished / Avoid / Open**, stamped with the rep. This is how you see who picked which turf.
 - **`notes`:** team notes, on a **house**, on a **whole tract (area)**, or as a **pin** dropped on the map.
@@ -41,7 +41,7 @@ SQL Editor → New query. Put in the real emails, then Run:
 ```sql
 update public.reps set email = 'issac@example.com' where name = 'Issac';
 update public.reps set email = 'matt@example.com'  where name = 'Matt';
-update public.reps set email = 'cody@example.com'  where name = 'Cody';
+update public.reps set email = 'kai@example.com'   where name = 'Kai';
 update public.reps set email = 'gio@example.com'   where name = 'Gio';
 select name, email, is_admin, active from public.reps order by id;
 ```
@@ -53,6 +53,9 @@ Long Island walk lists use the state's parcel IDs instead of NYC's 10-digit lot 
 
 ## Step 4c: saved turfs
 Paste the contents of `supabase/003_saved_turfs.sql` into a new SQL Editor tab and press **Run** (once). Until then the ★ Saved list stays empty.
+
+## Step 4d: Cody out, Kai in
+Paste `supabase/004_replace_cody_with_kai.sql` and press **Run** (once). Then create Kai's login (step 3) and link it (step 4). Cody's old login stops working the moment 004 runs; you can also delete his user under Authentication → Users.
 
 ## Step 5: connect the app
 1. **Project Settings → API Keys** (or **API**). Copy:
@@ -73,7 +76,7 @@ Paste the contents of `supabase/003_saved_turfs.sql` into a new SQL Editor tab a
 Heads-up: the home-screen app and Safari keep separate logins. Sign in inside the home-screen app.
 
 ## Day to day
-- **Pick turf:** tap a tract → **Claim**. The map outlines it in your color with your name (Issac purple, Matt teal, Cody pink, Gio brown). **Finished** makes it dashed; **Avoid** makes it dark dotted; **Open** releases it. Any rep can change any area. "Undo last area change" takes back your own.
+- **Pick turf:** tap a tract → **Claim**. The map outlines it in your color with your name (Issac purple, Matt teal, Kai pink, Gio brown). **Finished** makes it dashed; **Avoid** makes it dark dotted; **Open** releases it. Any rep can change any area. "Undo last area change" takes back your own.
 - **Knock:** open the walk list → tap a house → pick a status. "Come back" asks when. The black bar has **Undo** for 6 seconds; later use "Undo last knock" in the house's sheet.
 - **Notes:** in a house's sheet (house notes), on a tract card (area notes), or tap the **pin** button (top right, under locate) to drop a pin at your location or anywhere you tap. Everyone sees them right away.
 - **My stuff:** tap your name, top right. It shows your claimed turf, your come-backs and interested houses (tap to jump there) and the team's numbers today. The **Mine** button shows only your turf on the map.
