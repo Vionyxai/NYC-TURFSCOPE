@@ -30,6 +30,8 @@ export function buildAppConfig(sb, team) {
     followups: team.followups,
     turf_statuses: team.turf_statuses,
     note_max: team.note_max,
+    tag_max: team.tag_max,
+    tag_suggestions: team.tag_suggestions || [],
     refresh_seconds: team.refresh_seconds,
   };
 }

@@ -114,6 +114,13 @@
   .section { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
   .section h4 { margin: 0 0 6px; }
   .kv.one { grid-template-columns: 1fr; margin: 6px 0; }
+  .tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 10px; }
+  .tag { display: inline-flex; align-items: center; gap: 4px; border: 2px solid var(--line); border-radius: 22px; padding: 0 0 0 12px; min-height: 44px; font-size: 15px; }
+  .tag small { color: var(--muted); font-size: 12px; }
+  .tag button { min-width: 44px; min-height: 44px; border: 0; background: none; color: var(--muted); font-size: 22px; line-height: 1; }
+  .tagadd { display: flex; gap: 8px; margin-top: 8px; }
+  .tagadd input { flex: 1; min-width: 0; font-size: 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--chip); color: var(--fg); }
+  .tagadd .btn { width: auto; margin: 0; padding: 10px 18px; }
   .mix { display: flex; height: 12px; border-radius: 6px; overflow: hidden; margin: 6px 0; background: var(--line); }
   .mix i { display: block; height: 100%; }
   .mixkey { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; color: var(--muted); }
@@ -342,8 +349,8 @@
   }
   const uuid = () => (crypto.randomUUID ? crypto.randomUUID()
     : ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, (c) => (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)));
-  const K = window.TurfTeam ? window.TurfTeam.createTeam({ supabase: appCfg && appCfg.supabase, storage, fetch: window.fetch.bind(window), uuid, noteMax: appCfg && appCfg.note_max })
-    : { enabled: false, signedIn: () => false, me: () => null, latest: () => null, turf: () => null, allTurf: () => new Map(), notesFor: () => [], houseNotesInTract: () => [], pins: () => [], pendingCount: () => 0, onChange: () => {} };
+  const K = window.TurfTeam ? window.TurfTeam.createTeam({ supabase: appCfg && appCfg.supabase, storage, fetch: window.fetch.bind(window), uuid, noteMax: appCfg && appCfg.note_max, tagMax: appCfg && appCfg.tag_max })
+    : { enabled: false, signedIn: () => false, me: () => null, latest: () => null, turf: () => null, allTurf: () => new Map(), notesFor: () => [], tagsFor: () => [], houseNotesInTract: () => [], pins: () => [], pendingCount: () => 0, onChange: () => {} };
   const REPCOLOR = Object.fromEntries(((appCfg && appCfg.reps) || []).map((r) => [r.name, r.color]));
   const repColor = (name) => REPCOLOR[name] || '#374151';
   const TURF = Object.fromEntries(((appCfg && appCfg.turf_statuses) || []).map((x) => [x.key, x]));
@@ -494,7 +501,7 @@
       ${p.estimated_from ? `<div class="meta">No Census survey data for this tract — numbers estimated from nearby tract ${esc(p.estimated_from.slice(5))}.</div>` : ''}
       ${p.gaps && p.gaps.length ? `<div class="meta">Missing data: ${esc(p.gaps.join(', '))}</div>` : ''}
       ${hasList && canKnock() ? '<div class="meta" id="progLine" style="margin-top:8px">Team progress: loading…</div>' : ''}
-      ${canKnock() ? `<div class="section" id="turfBox"></div><div class="section" id="areaNotes"></div>` : ''}
+      ${canKnock() ? `<div class="section" id="tagBox"></div><div class="section" id="turfBox"></div><div class="section" id="areaNotes"></div>` : ''}
       ${hasList
         ? `<button class="btn" id="walkBtn">Walk list · ${hasList} homes</button>`
         : `<div class="meta" style="margin-top:8px">No address-level list for this tract yet.</div>`}
@@ -559,6 +566,34 @@
       ${houseN ? `<div class="meta">${houseN} house note${houseN === 1 ? '' : 's'} in the walk list.</div>` : ''}
       ${noteBox('For the team, e.g. “HOA says no soliciting on Elm” — no names or phone numbers')}`;
     wireNotes(nb, () => ({ tract: p.geoid }), () => paintTractTeam(p));
+    paintTags(p);
+  }
+  // Area tags: short team labels on a tract ("Good weekend turf"). Tap × to remove your own.
+  const TAG_MAX = (appCfg && appCfg.tag_max) || 40;
+  const TAG_SUGGEST = (appCfg && appCfg.tag_suggestions) || [];
+  function paintTags(p) {
+    const el = document.getElementById('tagBox');
+    if (!el) return;
+    const me = K.me();
+    const list = K.tagsFor(p.geoid);
+    const have = new Set(list.map((x) => x.label.toLowerCase()));
+    el.innerHTML = `<h4>Area tags</h4>
+      ${list.length ? `<div class="tags">${list.map((x) => `<span class="tag" style="border-color:${repColor(x.rep)}">${esc(x.label)}<small> · ${esc(x.rep || '')}${x.pending ? ' · syncing' : ''}${x.failed ? ' · NOT SAVED' : ''}</small>${(x.mine || (me && me.is_admin)) ? `<button data-untag="${esc(x.client_id)}" aria-label="Remove tag">×</button>` : ''}</span>`).join('')}</div>`
+        : '<div class="meta">No tags yet. Tag what the team should know about this area.</div>'}
+      <div class="fchips">${TAG_SUGGEST.filter((s) => !have.has(s.toLowerCase())).map((s) => `<button class="chip" data-tag="${esc(s)}">+ ${esc(s)}</button>`).join('')}</div>
+      <div class="tagadd"><input type="text" id="tagInput" maxlength="${TAG_MAX}" placeholder="Your own tag" enterkeyhint="done"><button class="btn" id="tagAdd">Add</button></div>
+      <div class="err" id="tagErr"></div>`;
+    const add = (label) => {
+      try { K.addTag(p.geoid, label); toast(`Tagged: ${label}`); paintTags(p); }
+      catch (ex) { const e = document.getElementById('tagErr'); if (e) e.textContent = ex.message; }
+    };
+    el.querySelectorAll('[data-tag]').forEach((b) => (b.onclick = () => add(b.dataset.tag)));
+    const inp = document.getElementById('tagInput');
+    document.getElementById('tagAdd').onclick = () => add(inp.value);
+    inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); add(inp.value); } };
+    el.querySelectorAll('[data-untag]').forEach((b) => (b.onclick = async () => {
+      try { await K.deleteTag(b.dataset.untag); paintTags(p); } catch (ex) { toast(`Couldn't remove: ${ex.message}`); }
+    }));
   }
   let openedAt = 0;
   function closeSheet() { if (Date.now() - openedAt < 300) return; document.getElementById('sheet').classList.remove('open'); cardOpen = null; }

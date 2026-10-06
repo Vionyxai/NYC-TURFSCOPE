@@ -1,5 +1,5 @@
 {
-  "_readme": "The field team and tracking options. The reps list is the source for the Supabase reps table (supabase/001_team_tracking.sql seeds the team, later numbered SQL files add or deactivate reps; npm test checks the active list matches). Each rep's color outlines the turf they claim on the map. Fill in each rep's email after you create their login in Supabase (supabase/README.md step 4). Knock statuses, follow-ups and turf statuses must match the SQL check rules (npm test checks that too). Notes are free text up to note_max characters; the database refuses phone numbers and emails in notes.",
+  "_readme": "The field team and tracking options. The reps list is the source for the Supabase reps table (supabase/001_team_tracking.sql seeds the team, later numbered SQL files add or deactivate reps; npm test checks the active list matches). Each rep's color outlines the turf they claim on the map. Fill in each rep's email after you create their login in Supabase (supabase/README.md step 4). Knock statuses, follow-ups and turf statuses must match the SQL check rules (npm test checks that too). Notes are free text up to note_max characters; the database refuses phone numbers and emails in notes. Area tags are short labels on a tract (up to tag_max characters, same no-phone/no-email rule as notes); tag_suggestions are one-tap choices on the tract card, and reps can type their own.",
   "reps": [
     {
       "name": "Issac",
@@ -95,5 +95,16 @@
     }
   ],
   "note_max": 280,
-  "refresh_seconds": 60
+  "refresh_seconds": 60,
+  "tag_max": 40,
+  "tag_suggestions": [
+    "Good weekend turf",
+    "Best after 5pm",
+    "Bring a Creole speaker",
+    "Bring a Spanish speaker",
+    "Lots of dogs",
+    "No soliciting signs",
+    "Block association active",
+    "Skip for now"
+  ]
 }

@@ -1,4 +1,4 @@
-// TurfScope team sync: login, house knocks, turf claims, notes and pins, all offline-first.
+// TurfScope team sync: login, house knocks, turf claims, notes, pins and area tags, all offline-first.
 // Talks to Supabase with plain fetch (no library). Plain script: defines window.TurfTeam.
 // Everything the outside world touches (fetch, storage, clock) is passed in, so npm test
 // can run this file against a fake Supabase without a browser.
@@ -18,7 +18,7 @@
   }
 
   // Where each kind of entry is stored in the database.
-  const TABLE = { knock: 'knocks', turf: 'turf_log', note: 'notes', saved: 'saved_turfs' };
+  const TABLE = { knock: 'knocks', turf: 'turf_log', note: 'notes', saved: 'saved_turfs', tag: 'area_tags' };
 
   function createTeam(opts) {
     const sb = opts.supabase;                 // { url, key } or null when not set up
@@ -27,11 +27,13 @@
     const now = opts.now || (() => Date.now());
     const uuid = opts.uuid;
     const noteMax = opts.noteMax || 280;
+    const tagMax = opts.tagMax || 40;
     const K = { session: 'ts.session', queue: 'ts.queue', me: 'ts.me' };
     const listeners = new Set();
     const byBbl = new Map();                  // bbl -> latest knock (anyone's, or our pending one)
     const turfBy = new Map();                 // tract -> latest area status
     const notes = new Map();                  // client_id -> note / pin
+    const tags = new Map();                   // client_id -> area tag { tract, label, rep, tagged_at }
     const K2 = { saved: 'ts.saved', activity: 'ts.activity' };
     let teamSaved = [];                       // everyone's saved turfs: { tract, plan_date, saved_at, rep, client_id }
     let activity = {};                        // tract -> { knocked, notes, pins, turf_status, turf_rep, last_at, last_rep }
@@ -54,6 +56,7 @@
       if (q.kind === 'knock') byBbl.set(q.row.bbl, { ...q.row, ...mine });
       if (q.kind === 'turf') turfBy.set(q.row.tract, { ...q.row, ...mine });
       if (q.kind === 'note') notes.set(q.row.client_id, { ...q.row, ...mine });
+      if (q.kind === 'tag') tags.set(q.row.client_id, { ...q.row, ...mine });
       if (q.kind === 'saved') {
         teamSaved = teamSaved.filter((x) => !(x.tract === q.row.tract && me && x.rep === me.name));
         teamSaved.push({ ...q.row, ...mine });
@@ -144,7 +147,7 @@
     async function signOut() {
       if (queue.length) throw new Error(`${queue.length} change(s) haven't synced yet. Get signal, tap Sync now, then sign out.`);
       try { if (session) await call('/auth/v1/logout', { method: 'POST' }); } catch (e) { /* offline is fine */ }
-      session = null; me = null; byBbl.clear(); turfBy.clear(); notes.clear(); teamSaved = []; activity = {};
+      session = null; me = null; byBbl.clear(); turfBy.clear(); notes.clear(); tags.clear(); teamSaved = []; activity = {};
       write(K.session, null); write(K.me, null); write(K2.saved, null); write(K2.activity, null);
       emit();
     }
@@ -167,6 +170,7 @@
       if (q.kind === 'knock') upd(byBbl, q.row.bbl);
       if (q.kind === 'turf') upd(turfBy, q.row.tract);
       if (q.kind === 'note') upd(notes, q.row.client_id);
+      if (q.kind === 'tag') upd(tags, q.row.client_id);
       if (q.kind === 'saved') teamSaved = teamSaved.map((x) => (x.client_id === q.row.client_id ? { ...x, pending: false, failed: failed || undefined } : x));
     }
 
@@ -264,15 +268,39 @@
     const houseNotesInTract = (tract) => [...notes.values()].filter((n) => n.tract === String(tract) && n.bbl).sort(byTime);
     const pins = () => [...notes.values()].filter((n) => n.lat != null).sort(byTime);
 
+    // ---------- Area tags ----------
+    // Short labels on a tract for the team ("Good weekend turf"). Same rule as notes, shorter.
+    const sameLabel = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
+    function addTag(tract, label) {
+      const problem = noteProblem(label, tagMax);
+      if (problem) throw new Error(problem.replace('in notes', 'in tags'));
+      const t = String(tract);
+      if (tagsFor(t).some((x) => sameLabel(x.label, String(label)))) throw new Error('That tag is already on this area.');
+      return enqueue('tag', { tract: t, label: String(label).trim(), tagged_at: iso() });
+    }
+    async function deleteTag(clientId) {
+      await remove('tag', clientId);
+      tags.delete(clientId);
+      emit();
+    }
+    const tagsFor = (tract) => [...tags.values()].filter((x) => x.tract === String(tract))
+      .sort((a, b) => (a.tagged_at < b.tagged_at ? -1 : 1));
+
     // ---------- Loading the team's data ----------
     const pendingKeys = (kind, key) => new Set(queue.filter((q) => q.kind === kind).map((q) => q.row[key]));
 
-    // Everything for one tract: house statuses and notes.
+    // Everything for one tract: house statuses, notes and tags.
     async function loadTract(tract) {
-      const [rows, ns] = await Promise.all([
+      const [rows, ns, ts] = await Promise.all([
         call(`/rest/v1/latest_knocks?tract=eq.${encodeURIComponent(tract)}&select=bbl,tract,address,status,followup,knocked_at,client_id,rep`),
         call(`/rest/v1/team_notes?tract=eq.${encodeURIComponent(tract)}&lat=is.null&select=client_id,tract,bbl,address,lat,lon,body,noted_at,rep`),
+        call(`/rest/v1/team_tags?tract=eq.${encodeURIComponent(tract)}&select=client_id,tract,label,tagged_at,rep`).catch((e) => (e.status === 404 ? null : Promise.reject(e))),  // 404 until 005 is run
       ]);
+      const pendTags = pendingKeys('tag', 'client_id');
+      if (ts) {
+        for (const [id, x] of tags) if (x.tract === tract && !pendTags.has(id)) tags.delete(id);
+        for (const x of ts) tags.set(x.client_id, { ...x, mine: !!me && x.rep === me.name });
+      }
       const pend = pendingKeys('knock', 'bbl');
       for (const [bbl, k] of byBbl) if (k.tract === tract && !pend.has(bbl)) byBbl.delete(bbl);
       for (const r of rows || []) if (!pend.has(r.bbl)) byBbl.set(r.bbl, { ...r, mine: !!me && r.rep === me.name });
@@ -355,7 +383,7 @@
     return {
       enabled: !!sb,
       signIn, signOut, loadMe, flush,
-      record, undo, setTurf, undoTurf, addNote, deleteNote,
+      record, undo, setTurf, undoTurf, addNote, deleteNote, addTag, deleteTag, tagsFor,
       loadTract, loadTeam, tractProgress, repStats, myFollowups,
       saveTurf, unsaveTurf, loadSaved, turfStage,
       mySaved: () => teamSaved.filter((x) => me && x.rep === me.name),

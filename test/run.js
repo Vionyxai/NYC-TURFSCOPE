@@ -76,7 +76,7 @@ t('languages and birthplaces read from Census labels', () => {
   const names = readCfg('scoring.json').targeting.people.names;
   assert.equal(shortName('Other Indo-European languages', names), 'Bengali, Hindi, Urdu, Italian, Greek…');   // C16001 group, offered in the filter
   assert.equal(shortName('Russian, Polish, or other Slavic languages', names), 'Russian & related');
-  assert.equal(shortName('Other and unspecified languages', names), 'Other and unspecified languages');
+  assert.equal(shortName('Other and unspecified languages', names), 'Other languages');
 });
 t('who lives here: languages, born abroad, race mix (display only)', () => {
   const meta = { languages: languageCodes(LANG_LABELS, 'B16001'), birthplaces: birthplaceCodes(BIRTH_LABELS) };
@@ -256,6 +256,8 @@ t('Supabase SQL matches config/team.json (reps, statuses, follow-ups)', () => {
   assert.deepEqual(lists('status'), [team.knock_statuses.map((x) => x.key), team.turf_statuses.map((x) => x.key)]);
   assert.deepEqual(lists('followup'), [team.followups.map((x) => x.key)]);
   assert.match(sql, new RegExp(`char_length\\(t\\) <= ${team.note_max}`));
+  const tagSql = fs.readFileSync(path.join(ROOT, 'supabase', '005_area_tags.sql'), 'utf8');
+  assert.match(tagSql, new RegExp(`char_length\\(btrim\\(label\\)\\) between 1 and ${team.tag_max} and public\\.clean_note\\(label\\)`), 'tag length + clean rule match team.json');
 });
 t('app config: publishable key accepted, secret keys refused', () => {
   const team = readCfg('team.json');
@@ -626,6 +628,27 @@ await at('notes: house, area and map pins shared with the team; no phone numbers
   await matt.deleteNote(pinId);
   await gio.loadTeam();
   assert.equal(gio.pins().length, 0);
+});
+await at('area tags: shared with names, one-tap or typed, no duplicates, remove own (admin any), work offline', async () => {
+  const sb = makeTeam();
+  const matt = app(sb, memoryStorage()); await matt.signIn('matt@x.com', 'pw-matt');
+  assert.throws(() => matt.addTag(TR, 'call 718-555-1234'), /phone numbers in tags/);
+  assert.throws(() => matt.addTag(TR, 'x'.repeat(41)), /40/);
+  sb.state.offline = true;
+  matt.addTag(TR, 'Good weekend turf');
+  assert.throws(() => matt.addTag(TR, 'good WEEKEND turf '), /already/);
+  assert.equal(matt.tagsFor(TR)[0].pending, true);
+  sb.state.offline = false; await matt.flush();
+  assert.equal(sb.tables.area_tags.length, 1);
+  const gio = app(sb, memoryStorage()); await gio.signIn('gio@x.com', 'pw-gio');
+  gio.addTag(TR, 'Bring a Creole speaker'); await gio.flush();
+  await matt.loadTract(TR);
+  assert.deepEqual([...matt.tagsFor(TR).map((x) => `${x.rep}:${x.label}`)], ['Matt:Good weekend turf', 'Gio:Bring a Creole speaker']);
+  assert.equal(matt.tagsFor(TR)[1].mine, false);
+  await gio.loadTract(TR);
+  await gio.deleteTag(gio.tagsFor(TR).find((x) => x.rep === 'Matt').client_id);   // admin can remove anyone's
+  await matt.loadTract(TR);
+  assert.deepEqual([...matt.tagsFor(TR).map((x) => x.label)], ['Bring a Creole speaker']);
 });
 await at('mixed offline queue (knock, claim, note) syncs in order after a reload', async () => {
   const sb = makeTeam(); const storage = memoryStorage();

@@ -189,6 +189,29 @@ select pg_temp.fails('select 1 from team_saved_turfs', 'anon read saved');
 select pg_temp.fails('select 1 from tract_activity', 'anon read activity');
 reset role;
 
+-- Area tags: the team sees them with names; add only as yourself; remove own (admin any); no phone/email; short
+select pg_temp.as_user('issac@x.com');
+insert into area_tags (client_id, tract, label) values ('a1a1a1a1-0000-0000-0000-000000000001', '36047101200', 'Good weekend turf');
+select pg_temp.fails($q$insert into area_tags (client_id, tract, label, rep_id) values (gen_random_uuid(), '36047101200', 'as Matt', (select id from reps where name = 'Matt'))$q$, 'tag as someone else');
+select pg_temp.fails($q$insert into area_tags (client_id, tract, label) values (gen_random_uuid(), '36047101200', 'call 718-555-1234')$q$, 'phone in tag');
+select pg_temp.fails($q$insert into area_tags (client_id, tract, label) values (gen_random_uuid(), '36047101200', repeat('x', 41))$q$, 'tag over 40 chars');
+reset role;
+select pg_temp.as_user('matt@x.com');
+insert into area_tags (client_id, tract, label) values ('a1a1a1a1-0000-0000-0000-000000000002', '36047101200', 'Bring a Creole speaker');
+delete from area_tags where client_id = 'a1a1a1a1-0000-0000-0000-000000000001';   -- not his: RLS removes 0 rows
+do $$ begin
+  assert (select string_agg(rep || ':' || label, ',' order by tagged_at, label) from team_tags where tract = '36047101200') like '%Issac:Good weekend turf%', 'Matt sees Issac''s tag with his name';
+  assert (select count(*) from team_tags where tract = '36047101200') = 2, 'Matt could not remove Issac''s tag';
+end $$;
+reset role;
+select pg_temp.as_user('gio@x.com');
+delete from area_tags where client_id = 'a1a1a1a1-0000-0000-0000-000000000001';   -- admin may
+do $$ begin assert (select count(*) from team_tags) = 1, 'admin removed a tag'; end $$;
+reset role;
+set role anon;
+select pg_temp.fails('select 1 from team_tags', 'anon read tags');
+reset role;
+
 -- Someone leaves the team
 update reps set active = false where name = 'Matt';
 select pg_temp.as_user('matt@x.com');
@@ -196,4 +219,4 @@ do $$ begin assert (select count(*) from knocks) = 0, 'inactive rep locked out';
 reset role;
 
 \o
-\echo RLS tests passed: 4 active reps (Cody out, Kai in); logged-out/stranger blocked; knocks, turf and notes posted only as yourself; anyone can change any status; no edits; retries safe; undo own; admin override; no phone/email in notes; inactive locked out
+\echo RLS tests passed: 4 active reps (Cody out, Kai in); logged-out/stranger blocked; knocks, turf and notes posted only as yourself; anyone can change any status; no edits; retries safe; undo own; admin override; no phone/email in notes or tags; area tags shared; inactive locked out

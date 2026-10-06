@@ -57,6 +57,9 @@ Paste the contents of `supabase/003_saved_turfs.sql` into a new SQL Editor tab a
 ## Step 4d: Cody out, Kai in
 Paste `supabase/004_replace_cody_with_kai.sql` and press **Run** (once). Then create Kai's login (step 3) and link it (step 4). Cody's old login stops working the moment 004 runs; you can also delete his user under Authentication → Users.
 
+## Step 4e: area tags
+Paste `supabase/005_area_tags.sql` and press **Run** (once). Reps can then tag a tract ("Good weekend turf", "Bring a Creole speaker") from its card; the whole team sees tags with who added them. Until then the Area tags box shows but tags won't save.
+
 ## Step 5: connect the app
 1. **Project Settings → API Keys** (or **API**). Copy:
    - **Project URL**, like `https://abcd1234.supabase.co`
@@ -78,6 +81,7 @@ Heads-up: the home-screen app and Safari keep separate logins. Sign in inside th
 ## Day to day
 - **Pick turf:** tap a tract → **Claim**. The map outlines it in your color with your name (Issac purple, Matt teal, Kai pink, Gio brown). **Finished** makes it dashed; **Avoid** makes it dark dotted; **Open** releases it. Any rep can change any area. "Undo last area change" takes back your own.
 - **Knock:** open the walk list → tap a house → pick a status. "Come back" asks when. The black bar has **Undo** for 6 seconds; later use "Undo last knock" in the house's sheet.
+- **Area tags:** on a tract card, tap a suggestion ("+ Lots of dogs") or type your own (40 characters, no names or numbers). Everyone sees them with your name; × removes your own.
 - **Notes:** in a house's sheet (house notes), on a tract card (area notes), or tap the **pin** button (top right, under locate) to drop a pin at your location or anywhere you tap. Everyone sees them right away.
 - **My stuff:** tap your name, top right. It shows your claimed turf, your come-backs and interested houses (tap to jump there) and the team's numbers today. The **Mine** button shows only your turf on the map.
 - **No signal?** Keep going. Knocks, claims and notes save on the phone ("waiting to sync") and go up by themselves when signal returns. Signing out is blocked until everything has synced.

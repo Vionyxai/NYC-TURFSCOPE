@@ -56,6 +56,7 @@ Two files control scope:
 - Notes: free-text team notes (≤ 280 chars) on a house, an area, or as a map pin; the whole team sees them with name and time; phone numbers and emails are refused
 - Saved turfs: each rep saves tracts to their own list with an optional date (Today / Tomorrow / This week / a date / no date). The ★ Saved list splits them into Working turf (anyone has knocked, noted, pinned or claimed there) and Queued turf (untouched, sorted by planned date). Resume opens the walk list at the first un-knocked house after your own last knock. Mine / Team views. Stored in Supabase `saved_turfs` (`supabase/003_saved_turfs.sql`).
 - My stuff: my claimed turf, my come-backs / interested houses, team numbers today; a Mine filter on the map
+- Area tags (`supabase/005`): short team labels on a tract (≤ 40 chars, same no-phone/no-email rule as notes), one-tap suggestions in `config/team.json → tag_suggestions`. Field knowledge only, never Census-derived profiling.
 - Team: Issac, Matt, Gio (admin), Kai (Kai Johnson replaced Cody: `supabase/004`) in `config/team.json` and the `reps` table
 - Tap a house on a walk list → No answer / Come back (+ when: after 5pm, weekend, owner not home, wants info first) / Not interested / Interested / Booked; undo for 6 s from the toast, later from the house sheet
 - Every knock is stamped with the rep; the team sees each other's so nobody double-knocks; "Hide done" hides Booked / Not interested
