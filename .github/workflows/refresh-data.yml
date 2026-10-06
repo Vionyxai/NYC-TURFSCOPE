@@ -39,4 +39,9 @@ jobs:
           git add -A m3-map/data
           if git diff --cached --quiet; then echo "No data changes"; exit 0; fi
           git commit -m "Refresh map data ($(date -u +%Y-%m-%d))"
-          git push
+          # Code may have been pushed while the pipeline ran (it only touches m3-map/data): catch up, then push.
+          for i in 1 2 3; do
+            git pull --rebase origin "$GITHUB_REF_NAME" && git push && exit 0
+            sleep $((i * 10))
+          done
+          exit 1
