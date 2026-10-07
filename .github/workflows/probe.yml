@@ -1,0 +1,21 @@
+# TEMPORARY: check the NYS address locator for a search bar. Removed after use.
+name: Probe
+on:
+  push:
+    branches: [claude/code-review-testing-q7elwy]
+    paths: [.github/workflows/probe.yml]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          set +e
+          echo "== locators"; curl -s "https://gisservices.its.ny.gov/arcgis/rest/services/Locators?f=json" | jq -c '[.services[]?.name]'
+          L=https://gisservices.its.ny.gov/arcgis/rest/services/Locators/Street_and_Address_Composite/GeocodeServer
+          curl -s "$L?f=json" | jq -c '{serviceDescription: .serviceDescription[0:120], caps: .capabilities, suggest: .locatorProperties.SupportsSuggest, single: .singleLineAddressField.name, sr: .spatialReference.wkid}'
+          echo "== suggest"; curl -s "$L/suggest?text=138-04%20109%20Ave%20Jamaica&maxSuggestions=5&f=json" | jq -c '.suggestions[]? | {text, magicKey}' | head -5
+          echo "== find (NYC)"; curl -s -H "Origin: https://example.vercel.app" -D h.txt "$L/findAddressCandidates?SingleLine=138-04%20109%20Ave%2C%20Jamaica%2C%20NY&outSR=4326&maxLocations=3&outFields=Match_addr,Addr_type,Score&f=json" | jq -c '.candidates[]? | {address, score, location}'
+          grep -i "access-control" h.txt
+          echo "== find (LI)"; curl -s "$L/findAddressCandidates?SingleLine=57%20Sunset%20Ave%2C%20West%20Babylon%2C%20NY&outSR=4326&maxLocations=3&outFields=Match_addr,Addr_type,Score&f=json" | jq -c '.candidates[]? | {address, score, location}'
+          echo "== find (partial)"; curl -s "$L/findAddressCandidates?SingleLine=12%20Elm%20St%20Massapequa&outSR=4326&maxLocations=3&outFields=Match_addr,Score&f=json" | jq -c '.candidates[]? | {address, score, location}'
+          echo "== NYC GeoSearch (backup)"; curl -s -H "Origin: https://example.vercel.app" -D g.txt "https://geosearch.planninglabs.nyc/v2/autocomplete?text=138-04%20109%20ave" | jq -c '.features[0:2][]? | {label: .properties.label, bbl: .properties.addendum.pad.bbl, c: .geometry.coordinates}'; grep -i "access-control" g.txt
