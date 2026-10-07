@@ -1,0 +1,18 @@
+# TEMPORARY: find the Nassau BOE FOIL contact. Removed after use.
+name: Probe
+on:
+  push:
+    branches: [claude/code-review-testing-q7elwy]
+    paths: [.github/workflows/probe.yml]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          set +e
+          A="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
+          for u in "https://www.nassaucountyny.gov/566/Board-of-Elections" "https://www.nassaucountyny.gov/Directory.aspx?DID=33" "https://www.nassaucountyny.gov/2219/Freedom-of-Information-Law-FOIL" "https://www.nassaucountyny.gov/FOIL" "https://www.nassaucountyny.gov/Search?searchPhrase=FOIL%20board%20of%20elections"; do
+            echo "== $u"; curl -sL -A "$A" -m 20 -o p.htm -w "%{http_code} %{url_effective}\n" "$u"
+            sed 's/<[^>]*>/ /g; s/&nbsp;/ /g' p.htm | tr -s ' \t' ' ' | grep -i -o ".\{0,90\}\(FOIL\|Freedom of Information\|Records Access\|@nassaucountyny\.gov\|Old Country\|516[-) .]*571\).\{0,90\}" | sort -u | head -12
+            grep -io 'href="[^"]*\(foil\|freedom\|records\|mailto\)[^"]*"' p.htm | sort -u | head -8
+          done
