@@ -83,7 +83,8 @@ Two files control scope:
 | Race / Hispanic origin | ACS 5-yr B03002 | Tract card only (background) |
 | Retired households | ACS 5-yr B19059 (retirement income), B19055 (Social Security) | Tract card + Target filter (share of households with retirement income) |
 | Voting, NYC | Official 2024 presidential results by election district (NYC BOE ED-level CSV) + NYC Planning election district map | Brooklyn and Queens. Harris = Democratic + Working Families, Trump = Republican + Conservative |
-| Voting, Long Island | 2020 presidential results by precinct, NYT Upshot precinct map (MIT; official NY precincts) | Until Nassau/Suffolk 2024 district results + maps are wired in. The 2024 NYT file is non-commercial, so not used. Each tract uses the newest year covering its county; the card shows the year |
+| Voting, Suffolk | Official 2024 presidential results by election district (Suffolk BOE fixed-width results file via OpenElections) + Suffolk County election district map (PRECINCTID) | All 1,070 districts match; decoded columns checked against the county totals in the file |
+| Voting, Nassau | 2020 presidential results by precinct, NYT Upshot precinct map (MIT; official NY precincts) | Until Nassau/Suffolk 2024 district results + maps are wired in. The 2024 NYT file is non-commercial, so not used. Each tract uses the newest year covering its county; the card shows the year |
 | Rooms | ACS 5-yr B25018 | Median rooms; house size outside NYC |
 | DAC | data.ny.gov `2e6c-s6fp` (2010 tracts) | |
 | Long Island homes | NYS ITS Tax Parcel Centroid Points (2025 roll) | Address + home type for every 1–3 family property; year built, sq ft and heating fuel where the town assessor reports them (parts of Suffolk). Owner names and mailing addresses are never requested |

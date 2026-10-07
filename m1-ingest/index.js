@@ -8,6 +8,7 @@ import { runBusiness } from './business.js';
 import { runLiParcels } from './li_parcels.js';
 import { runElections } from './elections.js';
 import { runElectionsNyc } from './elections_nyc.js';
+import { runElectionsSuffolk } from './elections_suffolk.js';
 
 const steps = [
   ['ACS', runACS, true],
@@ -19,6 +20,7 @@ const steps = [
   ['LI parcels', runLiParcels, false],
   ['Elections', runElections, false],
   ['Elections NYC 2024', runElectionsNyc, false],
+  ['Elections Suffolk 2024', runElectionsSuffolk, false],
 ];
 
 log(`Ingest · active counties: ${activeCounties().map((c) => c.name).join(', ')}`);

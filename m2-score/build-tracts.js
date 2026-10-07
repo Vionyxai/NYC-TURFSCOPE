@@ -209,7 +209,7 @@ for (const f of geo.features) {
 // Voting: presidential results by precinct / election district, spread over the tracts each covers.
 // Several sources (official 2024 NYC districts, 2020 statewide): each tract uses the newest one
 // that covers its county.
-const voteSets = ['precincts_nyc.json', 'precincts.json'].map((n) => readJSONIfExists(raw(n))).filter(Boolean)
+const voteSets = ['precincts_nyc.json', 'precincts_suffolk.json', 'precincts.json'].map((n) => readJSONIfExists(raw(n))).filter(Boolean)
   .sort((a, b) => b.year - a.year);
 const voteYears = {};
 if (voteSets.length) {

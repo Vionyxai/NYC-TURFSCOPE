@@ -98,5 +98,25 @@
       "Conservative"
     ],
     "credit": "NYC Board of Elections, General Election 2024 results by election district; NYC Department of City Planning election district map"
+  },
+  "elections_suffolk": {
+    "note": "Official 2024 presidential results by election district from the Suffolk County Board of Elections results file (fixed-width text, archived by OpenElections), joined to Suffolk County's election district map by PRECINCTID (town digit + 3-digit ED). Harris = DEM + WOR, Trump = REP + CON; total includes write-ins. The importer checks the decoded columns against the county totals in the file.",
+    "url": "https://raw.githubusercontent.com/openelections/openelections-sources-ny/master/2024/general/Suffolk.txt",
+    "shapes_url": "https://gis.suffolkcountyny.gov/server/rest/services/LocalGovernmentSQLData/VotingPrecinct/FeatureServer/0/query",
+    "page_size": 2000,
+    "year": 2024,
+    "race": "President and Vice President",
+    "dem_parties": [
+      "DEM",
+      "WOR"
+    ],
+    "rep_parties": [
+      "REP",
+      "CON"
+    ],
+    "first_vote_col": 44,
+    "count_cols": 2,
+    "width": 4,
+    "credit": "Suffolk County Board of Elections, General Election 2024 results by election district (via OpenElections); Suffolk County election district map"
   }
 }

@@ -14,6 +14,7 @@ import { addrKey, compareLots, packWalk, unpackWalk, tractLocator } from '../m4-
 import { fuelKey, parcelToLot, statRange } from '../m1-ingest/li_parcels.js';
 import { featureSplitter, precinctFromFeature } from '../m1-ingest/elections.js';
 import { csvFields, parseEdResults } from '../m1-ingest/elections_nyc.js';
+import { parseSuffolkResults } from '../m1-ingest/elections_suffolk.js';
 import { pointInFeatureCollection, shareInside } from '../lib/geo.js';
 import { checkSupabase, buildAppConfig } from '../scripts/app-config.js';
 import vm from 'node:vm';
@@ -136,6 +137,22 @@ t('NYC 2024 results: BOE ED-level file → Harris / Trump / total per election d
   assert.deepEqual({ ...r.get(23001) }, { county: '081', dem: 295, rep: 1011, total: 1319 });   // ballot counts skipped, write-ins in the total
   assert.equal(r.get(43010).dem, 1020);
   assert.equal(r.has(37071), false);                                                       // Manhattan not active
+});
+t('Suffolk 2024 results: fixed-width BOE file → Harris / Trump / total per district', () => {
+  const cand = (name, party, n) => `0044C${name.padEnd(25)}${party ? `${party} ${String(n).padStart(6, '0')} 1A ` : `S${String(n).padStart(6, '0')}    `}`;
+  const ed = (id, votes) => `0116E${id}P0743000571`.padEnd(42) + '11' + ['0000', '0009', ...votes.map((v) => String(v).padStart(4, '0'))].join('');
+  const text = [
+    '0179I Following is a set of records pertinent to the General Election held on Tuesday, November 5, 2024',
+    '0064RPresident and Vice President            U     1070108673101',
+    cand('Harris, Kamala D', 'DEM', 572), cand('Harris, Kamala D', 'WOR', 30), cand('Trump, Donald J', 'REP', 624), cand('Trump, Donald J', 'CON', 179), cand('STEIN, JILL', null, 0),
+    ed('0001', [350, 22, 149, 30, 2]), ed('1235', [222, 8, 475, 149, 0]),
+    '0064RRepresentative in Congress                U',
+    ed('0001', [9999, 9999, 9999, 9999, 0]),
+  ].join('\n');
+  const { districts, candidates } = parseSuffolkResults(text, readCfg('sources.json').elections_suffolk);
+  assert.deepEqual(candidates.map((c) => c.party), ['DEM', 'WOR', 'REP', 'CON', null]);
+  assert.deepEqual({ ...districts.get('0001') }, { dem: 372, rep: 179, total: 553 });   // later races ignored
+  assert.deepEqual({ ...districts.get('1235') }, { dem: 230, rep: 624, total: 854 });
 });
 t('PLUTO bct2020 → GEOID', () => {
   assert.equal(plutoTractGeoid('4012300'), '36081012300');
