@@ -11,11 +11,6 @@ jobs:
       - run: |
           set +e
           A="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
-          echo "== OE issue 148 comments mentioning Nassau"; curl -s "https://api.github.com/repos/openelections/openelections-data-ny/issues/148/comments?per_page=100" | jq -r '.[] | select(.body|test("Nassau";"i")) | .created_at + " " + (.body|gsub("\n";" ")|.[0:400])'
-          curl -s "https://api.github.com/repos/openelections/openelections-data-ny/issues/148" | jq -r '.body' | grep -i -A2 nassau | head
-          echo "== OE sources tree search nassau"; curl -s "https://api.github.com/repos/openelections/openelections-sources-ny/git/trees/master?recursive=1" | jq -r '.tree[].path' | grep -i nassau | tail -15
-          echo "== Nassau site search"; curl -sL -A "$A" "https://www.nassaucountyny.gov/Search?searchPhrase=election%20results" | grep -io 'href="[^"]*"' | grep -i "elect\|result\|boe\|DocumentCenter" | sort -u | head -25
-          for u in "https://www.nassaucountyny.gov/553/Board-of-Elections" "https://www.nassaucountyny.gov/elections" "https://www.nassaucountyny.gov/2939/Election-Results" "https://www.nassaucountyny.gov/agencies/BOE/" "https://www.nassaucountyny.gov/DocumentCenter/Index/297"; do echo "-- $u"; curl -sL -A "$A" -m 20 -o n.htm -w "%{http_code} %{url_effective}\n" "$u"; grep -io 'href="[^"]*"' n.htm | grep -i "result\|2024\|canvass\|xls\|csv\|txt\|DocumentCenter/View" | sort -u | head -15; done
-          echo "== Nassau results host guesses"; for u in "https://www.nassaucountyny.gov/boe/results" "https://boe.nassaucountyny.gov" "https://nassauvotes.com" "https://www.nassauboe.com"; do curl -sL -A "$A" -m 15 -o /dev/null -w "$u %{http_code} %{url_effective}\n" "$u"; done
-          echo "== NYS GIS: election district layers"; curl -s "https://gisservices.its.ny.gov/arcgis/rest/services?f=json" | jq -r '.services[]?.name' | sort -u
-          echo "== ArcGIS search nassau ED"; for q in "Nassau%20County%20Election%20Districts%20owner%3ANassauCountyGIS" "election%20districts%20Nassau%20County%20NY" "Nassau%20ED%20boundaries"; do curl -s "https://www.arcgis.com/sharing/rest/search?q=$q&num=8&f=json" | jq -r '.results[]? | [.type, .title, .owner, .url] | @tsv'; done
+          curl -sL -A "$A" "https://www.nassaucountyny.gov/571/Election-Results" -o r.htm; wc -c r.htm
+          grep -io '<a [^>]*href="[^"]*"[^>]*>[^<]*' r.htm | grep -i "2024\|2025\|result\|canvass\|district\|DocumentCenter\|xls\|csv" | sed 's/<a //' | head -40
+          grep -io 'https\?://[^"<> ]*\(enr\|clarity\|results\)[^"<> ]*' r.htm | sort -u | head
