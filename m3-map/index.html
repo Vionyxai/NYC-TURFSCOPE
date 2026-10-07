@@ -202,6 +202,8 @@
   <div class="group"><h4>Home age (year built)</h4><div class="row" id="tgHome"></div></div>
   <div class="group"><h4>Homeowner age (rough estimate) — more than usual</h4><div class="row" id="tgAge"></div></div>
   <div class="group"><h4>House size</h4><div class="row" id="tgSize"></div></div>
+  <div class="group" id="tgVoteGroup"><h4 id="tgVoteTitle">Voting (presidential, neighborhood)</h4><div class="row" id="tgVote"></div></div>
+  <div class="group" id="tgRetGroup"><h4>Retired households (get pension / 401k income)</h4><div class="row" id="tgRet"></div></div>
   <div class="group" id="tgLangGroup"><h4 id="tgLangTitle">Language at home</h4><div class="row" id="tgLang"></div></div>
   <button class="btn" id="targetDone">Show tracts</button>
 </div>
@@ -252,7 +254,7 @@
   const money = (x) => (x == null ? '—' : '$' + Math.round(x / 1000) + 'k');
 
   let placingPin = false;                                      // true after "Tap a spot on the map"
-  const state = { util: 'all', dac: false, mine: false, min: 0, oils: new Set(), colorBy: 'score', bestSort: 'score', incomes: new Set(), homes: new Set(), ages: new Set(), sizes: new Set(), langs: new Set() };
+  const state = { util: 'all', dac: false, mine: false, min: 0, oils: new Set(), colorBy: 'score', bestSort: 'score', incomes: new Set(), homes: new Set(), ages: new Set(), sizes: new Set(), langs: new Set(), rets: new Set(), votes: new Set() };
   let data, summary, walkIndex = {}, layer, currentList = null;
 
   const map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([40.72, -73.75], 11);
@@ -314,6 +316,12 @@
     return mine >= avg - 0.005;
   }
 
+  // Voting: several picks = the lowest one.
+  TG.vote_bands = TG.vote_bands || [];
+  const voteMin = () => Math.min(...[...state.votes].map((k) => (TG.vote_bands.find((b) => b.key === k) || { min: 0 }).min));
+  // Retired households: several picks = the lowest one (like oil).
+  TG.retired_bands = TG.retired_bands || [];
+  const retMin = () => Math.min(...[...state.rets].map((k) => (TG.retired_bands.find((b) => b.key === k) || { min: 0 }).min));
   // Language at home: any picked language spoken by at least the configured share of residents.
   TG.languages = TG.languages || [];
   const LANG_MIN = TG.language_min_share ?? 0.15;
@@ -324,7 +332,7 @@
   // Who lives here (Census, neighborhood level). The race / Hispanic mix is background only.
   const RACE = [['hispanic', 'Hispanic/Latino', '#d97706'], ['white', 'White', '#64748b'], ['black', 'Black', '#7c3aed'], ['asian', 'Asian', '#0891b2'], ['other', 'Other/multiracial', '#a3a3a3']];
   function peopleBlock(p) {
-    if (!p.languages && !p.race && p.born_abroad == null) return '';
+    if (!p.languages && !p.race && p.born_abroad == null && !p.retired && !p.vote) return '';
     const list = (xs, n) => xs.slice(0, n).map(([k, x]) => `${esc(k)} ${pct(x)}`).join(' · ');
     const rp = p.race ? shares100(p.race, RACE.map(([k]) => k)) : null;
     const race = rp ? `<div class="mix">${RACE.map(([, , c], i) => `<i style="width:${rp[i]}%;background:${c}"></i>`).join('')}</div>
@@ -336,6 +344,8 @@
         ${p.limited_english != null ? `<div><span>Limited English</span>${pct(p.limited_english)} <small class="meta">speak English less than "very well" (bring translated material or a bilingual rep)</small></div>` : ''}
         ${p.born_abroad != null ? `<div><span>Born in another country</span>${pct(p.born_abroad)}</div>` : ''}
         ${p.birthplaces && p.birthplaces.length ? `<div><span>Most common countries of birth</span>${list(p.birthplaces, 3)}</div>` : ''}
+        ${p.vote ? `<div><span>${TG.vote_year || ''} vote for president</span>Democratic ${pct(p.vote.dem)} · Republican ${pct(p.vote.rep)} <small class="meta">precinct results, about ${p.vote.votes.toLocaleString()} votes</small></div>` : ''}
+        ${p.retired ? `<div><span>Retired households</span>${pct(p.retired.retirement_income)} get retirement income <small class="meta">(pension, 401k/IRA)</small>${p.retired.social_security != null ? ` · ${pct(p.retired.social_security)} get Social Security` : ''} <small class="meta">% of households</small></div>` : ''}
       </div>
       ${race ? `<div class="meta" style="margin-top:6px">Neighborhood makeup (background only, not used in TurfScore or filters)</div>${race}` : ''}
       ${rp && rp[RACE.findIndex(([k]) => k === 'other')] >= 25 ? '<div class="meta">"Other/multiracial" is large here. Many Caribbean and South American residents (for example Guyanese and Trinidadian families) check "some other race" or more than one race on the Census.</div>' : ''}
@@ -410,6 +420,8 @@
     (!state.ages.size || ageOK(p)) &&
     (!state.sizes.size || state.sizes.has(p.size_band)) &&
     (!state.langs.size || langOK(p)) &&
+    (!state.votes.size || (p.vote && p.vote.dem >= voteMin())) &&
+    (!state.rets.size || (p.retired && p.retired.retirement_income != null && p.retired.retirement_income >= retMin())) &&
     (!state.oils.size || (oilOf(p) != null && oilOf(p) >= oilMin())) &&
     p.score >= state.min &&
     (!state.mine || (turfOf(p.geoid) && turfOf(p.geoid).rep === (K.me() && K.me().name)));
@@ -851,13 +863,18 @@
     ['tgSize', 'sizes', TG.size_bands],
     ['tgOil', 'oils', TG.oil_bands],
     ['tgLang', 'langs', TG.languages.map((n) => ({ key: n, label: n }))],
+    ['tgRet', 'rets', TG.retired_bands],
+    ['tgVote', 'votes', TG.vote_bands],
   ];
+  if (TG.vote_year) document.getElementById('tgVoteTitle').textContent = `Voting (${TG.vote_year} president, neighborhood)`;
+  if (!TG.vote_bands.length || !TG.vote_year) document.getElementById('tgVoteGroup').style.display = 'none';
+  if (!TG.retired_bands.length) document.getElementById('tgRetGroup').style.display = 'none';
   document.getElementById('tgLangTitle').textContent = `Language at home (${Math.round(LANG_MIN * 100)}%+ of residents)`;
   if (!TG.languages.length) document.getElementById('tgLangGroup').style.display = 'none';
   const countMatches = () => data.features.filter((f) => passes(f.properties)).length;
   function paintTarget() {
     for (const [id, k] of groups) document.querySelectorAll(`#${id} .chip`).forEach((b) => b.classList.toggle('on', state[k].has(b.dataset.k)));
-    const n = state.incomes.size + state.homes.size + state.ages.size + state.sizes.size + state.oils.size + state.langs.size;
+    const n = state.incomes.size + state.homes.size + state.ages.size + state.sizes.size + state.oils.size + state.langs.size + state.rets.size + state.votes.size;
     document.querySelectorAll('#colorBy button').forEach((b) => b.classList.toggle('on', b.dataset.c === state.colorBy));
     paintLegend();
     const tb = document.getElementById('targetBtn');
@@ -877,7 +894,7 @@
   }
   document.getElementById('targetBtn').onclick = () => { paintTarget(); document.getElementById('sheet').classList.remove('open'); document.getElementById('targetSheet').classList.add('open'); };
   document.getElementById('targetDone').onclick = () => document.getElementById('targetSheet').classList.remove('open');
-  document.getElementById('targetClear').onclick = () => { state.incomes.clear(); state.homes.clear(); state.ages.clear(); state.sizes.clear(); state.oils.clear(); state.langs.clear(); paintTarget(); render(); };
+  document.getElementById('targetClear').onclick = () => { state.incomes.clear(); state.homes.clear(); state.ages.clear(); state.sizes.clear(); state.oils.clear(); state.langs.clear(); state.rets.clear(); state.votes.clear(); paintTarget(); render(); };
   // One tap: PSEG LI + high-oil tracts, colored by oil, best list sorted by most oil.
   const FOCUS = TG.oil_focus;
   const focusBtn = document.getElementById('oilFocus');

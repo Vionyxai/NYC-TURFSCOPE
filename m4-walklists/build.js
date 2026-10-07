@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { config, readJSON, readJSONIfExists, writeJSON, writeText, raw, out, log, toCSV, EXPORT_DIR, isMain } from '../lib/util.js';
-import { pointInFeatureCollection, pointInGeometry, bbox } from '../lib/geo.js';
+import { pointInFeatureCollection, pointInGeometry, featureLocator } from '../lib/geo.js';
 import { lotScore, lotUtility, sizeBand, homeAgeBand, lotBusiness } from '../m2-score/score.js';
 
 // Sort key for addresses, including Queens hyphenated numbers ("123-45 88 AVENUE").
@@ -44,25 +44,8 @@ export function unpackWalk(file) {
   return file.rows.map((r) => Object.fromEntries(file.cols.map((c, i) => [c, YES_NO.has(c) ? r[i] === 1 : r[i]])));
 }
 
-// Finds which scored tract a point is in, using a coarse grid so 800k houses stay fast.
-export function tractLocator(features, cell = 0.02) {
-  const grid = new Map();
-  const key = (x, y) => `${Math.floor(x / cell)},${Math.floor(y / cell)}`;
-  for (const f of features) {
-    const [x0, y0, x1, y1] = bbox(f.geometry);
-    for (let x = Math.floor(x0 / cell); x <= Math.floor(x1 / cell); x++) {
-      for (let y = Math.floor(y0 / cell); y <= Math.floor(y1 / cell); y++) {
-        const k = `${x},${y}`;
-        if (!grid.has(k)) grid.set(k, []);
-        grid.get(k).push(f);
-      }
-    }
-  }
-  return (lon, lat) => {
-    for (const f of grid.get(key(lon, lat)) || []) if (pointInGeometry([lon, lat], f.geometry)) return f.properties;
-    return null;
-  };
-}
+// Finds which scored tract a point is in (kept under this name for the tests).
+export const tractLocator = featureLocator;
 
 function main() {
   const scoring = config('scoring.json');

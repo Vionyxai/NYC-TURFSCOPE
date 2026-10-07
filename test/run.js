@@ -6,12 +6,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { ROOT } from '../lib/util.js';
-import { pre1980Codes, languageCodes, birthplaceCodes, MAIN_VARS, RACE_VARS } from '../m1-ingest/acs.js';
+import { pre1980Codes, languageCodes, birthplaceCodes, MAIN_VARS, RACE_VARS, RETIRED_VARS } from '../m1-ingest/acs.js';
 import { plutoTractGeoid } from '../m1-ingest/pluto.js';
 import { isDac, detectDacFields, parseRelationship } from '../m1-ingest/dac.js';
-import { incomeBand, dacFor2020, lotUtility, lotScore, ownerAgeShares, sizeBand, homeAgeBand, lotBusiness, tractPeople, shortName } from '../m2-score/score.js';
+import { incomeBand, dacFor2020, lotUtility, lotScore, ownerAgeShares, sizeBand, homeAgeBand, lotBusiness, tractPeople, shortName, votesByTract, voteShares } from '../m2-score/score.js';
 import { addrKey, compareLots, packWalk, unpackWalk, tractLocator } from '../m4-walklists/build.js';
 import { fuelKey, parcelToLot, statRange } from '../m1-ingest/li_parcels.js';
+import { featureSplitter, precinctFromFeature } from '../m1-ingest/elections.js';
 import { pointInFeatureCollection, shareInside } from '../lib/geo.js';
 import { checkSupabase, buildAppConfig } from '../scripts/app-config.js';
 import vm from 'node:vm';
@@ -90,10 +91,33 @@ t('who lives here: languages, born abroad, race mix (display only)', () => {
   assert.deepEqual(JSON.parse(JSON.stringify(p.languages)), [['Spanish', 0.3], ['Bengali', 0.2]]);   // Chinese 1% is under the list cut-off
   assert.equal(p.born_abroad, 0.45);
   assert.deepEqual(JSON.parse(JSON.stringify(p.birthplaces)), [['Dominican Republic', 0.15], ['Guyana', 0.06]]);
+  assert.equal(p.retired, null);   // no B19059 in this sample
+  assert.deepEqual({ ...tractPeople({ B19059_001E: 400, B19059_002E: 120, B19055_001E: 400, B19055_002E: 160 }, {}, {}).retired }, { retirement_income: 0.3, social_security: 0.4 });
   const none = tractPeople({}, {}, {});
   assert.equal(none.race, null); assert.equal(none.languages, null); assert.equal(none.born_abroad, null);
   assert.ok(RACE_VARS.includes('B03002_012E'));
-  for (const vars of [MAIN_VARS, RACE_VARS]) assert.ok(vars.length + 1 <= 50, `Census allows 50 variables per request (with NAME), got ${vars.length + 1}`);
+  for (const vars of [MAIN_VARS, [...RACE_VARS, ...RETIRED_VARS]]) assert.ok(vars.length + 1 <= 50, `Census allows 50 variables per request (with NAME), got ${vars.length + 1}`);
+});
+t('elections: stream features out of a huge file, keep our counties, split votes over tracts', () => {
+  const box = (x0, y0, x1, y1) => ({ type: 'Polygon', coordinates: [[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]] });
+  const feat = (id, d, r, g) => ({ type: 'Feature', properties: { GEOID: id, votes_dem: d, votes_rep: r, votes_total: d + r + 10, note: 'has {braces} and "quotes"' }, geometry: g });
+  const text = JSON.stringify({ type: 'FeatureCollection', features: [
+    feat('36081-0034025', 600, 100, box(0, 0, 2, 1)), feat('06001-12', 5, 5, box(9, 9, 10, 10)), { ...feat('36081-0099', 0, 0, box(0, 0, 1, 1)), properties: { GEOID: '36081-0099', votes_dem: 0, votes_rep: 0, votes_total: 0 } }, feat('36059-1', 100, 300, box(0, 0, 1, 1)),
+  ] });
+  const got = [];
+  const split = featureSplitter((s) => got.push(JSON.parse(s)));
+  for (let i = 0; i < text.length; i += 7) split(text.slice(i, i + 7));   // tiny chunks: features cut mid-string
+  assert.equal(got.length, 4);
+  const counties = new Set(['36081', '36047']);
+  const kept = got.map((f) => precinctFromFeature(f, counties)).filter(Boolean);
+  assert.deepEqual(kept.map((p) => p.id), ['36081-0034025']);           // other state, no votes, inactive county dropped
+  assert.equal(kept[0].total, 710);
+  const locate = (x) => ({ geoid: x < 1 ? 'A' : 'B' });                 // precinct spans two tracts, half each
+  const v = votesByTract(kept, locate, 4);
+  assert.equal(Math.round(v.get('A').dem), 300);
+  assert.equal(Math.round(v.get('B').total), 355);
+  assert.deepEqual({ ...voteShares(v.get('A')) }, { dem: 0.85, rep: 0.14, votes: 355 });
+  assert.equal(voteShares({ dem: 10, rep: 5, total: 20 }, 50), null);   // too few votes to say
 });
 t('PLUTO bct2020 → GEOID', () => {
   assert.equal(plutoTractGeoid('4012300'), '36081012300');
@@ -297,7 +321,8 @@ const acsV = (o) => ({
   B25007_002E: 700, B25007_004E: 70, B25007_006E: 210, B25007_008E: 140, B25007_009E: 280, B25018_001E: 6.2,
   B03002_001E: 2000, B03002_003E: 800, B03002_004E: 200, B03002_006E: 400, B03002_012E: 600,
   B16001_001E: 1900, B16001_002E: 1100, B16001_003E: 400, B16001_005E: 100, B16001_066E: 300, B16001_068E: 150, B16001_075E: 100, B16001_077E: 50,
-  B05006_001E: 700, B05006_145E: 200, B05006_172E: 150, B05006_051E: 60, ...o,
+  B05006_001E: 700, B05006_145E: 200, B05006_172E: 150, B05006_051E: 60,
+  B19059_001E: 1000, B19059_002E: 380, B19055_001E: 1000, B19055_002E: 450, ...o,
 });
 fs.writeFileSync(path.join(RAW, 'acs_tracts.json'), JSON.stringify({
   year: 2024, pre1980_codes: ['B25034_007E', 'B25034_011E'],
@@ -318,6 +343,10 @@ fs.writeFileSync(path.join(RAW, 'li_parcels.json'), JSON.stringify([
   { id: 'LI-2', address: '14 ELM ST', zip: '11758', town: 'Oyster Bay', cls: '220', units: 2, year: null, sqft: null, fuel: null, heat: null, biz: false, lat: 40.701, lon: -73.592 },
   { id: 'LI-3', address: '9 FAR RD', zip: '11901', town: 'Riverhead', cls: '210', units: 1, year: null, sqft: null, fuel: null, heat: null, biz: false, lat: 40.95, lon: -72.66 },
 ]));
+// 2020 precinct results: one precinct covering the Queens tract (and some empty land beside it).
+fs.writeFileSync(path.join(RAW, 'precincts.json'), JSON.stringify({ year: 2020, precincts: [
+  { id: '36081-1', county: '081', dem: 700, rep: 280, total: 1000, geometry: { type: 'Polygon', coordinates: [[[-73.81, 40.71], [-73.79, 40.71], [-73.79, 40.73], [-73.81, 40.73], [-73.81, 40.71]]] } },
+] }));
 fs.writeFileSync(path.join(RAW, 'business_by_bbl.json'), JSON.stringify({ '103 88 AVENUE': ['Home Improvement Contractor'] }));
 // Villages with their own electric utility: one covers the whole Suffolk tract, one a quarter of Nassau's.
 const vbox = (x0, y0, x1, y1) => ({ type: 'Polygon', coordinates: [[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]] });
@@ -407,6 +436,12 @@ t('who lives here on tracts + language filter choices in the summary', () => {
   const summary = JSON.parse(fs.readFileSync(path.join(OUT, 'summary.json'), 'utf8'));
   assert.deepEqual(summary.targeting.languages, ['Spanish', 'Bengali', 'Chinese']);   // most speakers across the turf first
   assert.equal(summary.targeting.language_min_share, 0.15);
+  assert.deepEqual({ ...q.retired }, { retirement_income: 0.38, social_security: 0.45 });
+  assert.deepEqual(summary.targeting.retired_bands.map((b) => b.min), [0.25, 0.35, 0.45]);
+  assert.deepEqual({ ...q.vote }, { dem: 0.7, rep: 0.28, votes: 1000 });
+  assert.equal(by[T.nassau].vote, null);                                    // no precinct there
+  assert.equal(summary.targeting.vote_year, 2020);
+  assert.deepEqual(summary.targeting.vote_bands.map((b) => b.min), [0.5, 0.6, 0.7]);
   // Race is background only: not in the score parts, not a filter choice.
   assert.ok(!Object.keys(q.parts).some((k) => /race|hispanic|white|black|asian/.test(k)));
   assert.ok(!JSON.stringify(summary.targeting).match(/race|hispanic/i));

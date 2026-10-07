@@ -41,6 +41,7 @@ Two files control scope:
 - Live location: the locate button follows your GPS position and shows the tract you're standing in (score, utility). The position stays on the phone; nothing is sent or stored.
 - Renters: every card shows owners / renters; tracts with ≥ 50% renter households get a renter-heavy badge. In NYC the card also counts 2–4 family homes (which have rental units) and homes with a business.
 - Who lives here (tract card, Census ACS, neighborhood level only): languages spoken at home (B16001, falls back to C16001) with the share who speak English less than very well, share born abroad with the top countries of birth (B05006), and the race / Hispanic mix (B03002). Target has a **Language at home** group: tracts where a picked language is spoken by 15%+ of residents. The race mix is background only: never in the TurfScore, never a filter. No individual-level inference (e.g. guessing race from surnames) — that needs owner names, which the app never stores. Settings: `config/scoring.json → targeting.people`.
+- Retired households and voting (tract card + Target): share of households with retirement income (25/35/45%+) and 2020 presidential Democratic share (50/60/70%+), bands in `config/scoring.json → targeting`. Both are neighborhood-level public statistics; nothing about any household or voter is stored (no voter files).
 - Tapping a tract opens a card: homes, median income plus band, median year built, % pre-1980, % owner-occupied, heating fuel mix, DAC, and the score breakdown
 
 **Walk lists** (Queens from NYC PLUTO; Nassau and Suffolk from the NYS assessment roll)
@@ -80,6 +81,8 @@ Two files control scope:
 | Languages at home | ACS 5-yr B16001 (or C16001) | Tract card + Language target |
 | Born abroad / country of birth | ACS 5-yr B05006 | Tract card |
 | Race / Hispanic origin | ACS 5-yr B03002 | Tract card only (background) |
+| Retired households | ACS 5-yr B19059 (retirement income), B19055 (Social Security) | Tract card + Target filter (share of households with retirement income) |
+| Voting | 2020 presidential results by precinct, NYT Upshot precinct map (MIT; official NY precincts) | Spread over tracts by area; tract card + Target filter (Democratic share). The 2024 NYT file is non-commercial, so not used. Neighborhood level only |
 | Rooms | ACS 5-yr B25018 | Median rooms; house size outside NYC |
 | DAC | data.ny.gov `2e6c-s6fp` (2010 tracts) | |
 | Long Island homes | NYS ITS Tax Parcel Centroid Points (2025 roll) | Address + home type for every 1–3 family property; year built, sq ft and heating fuel where the town assessor reports them (parts of Suffolk). Owner names and mailing addresses are never requested |

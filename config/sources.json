@@ -2,7 +2,10 @@
   "_readme": "Every external endpoint lives here. Items marked verify:true were not reachable from the environment this repo was generated in — confirm on first run.",
   "acs": {
     "base": "https://api.census.gov/data",
-    "years_to_try": [2024, 2023],
+    "years_to_try": [
+      2024,
+      2023
+    ],
     "verify": true
   },
   "tigerweb": {
@@ -11,21 +14,50 @@
     "fallback_service": "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer",
     "tract_layer_name": "Census Tracts",
     "place_layer_name": "Incorporated Places",
-    "simplify_deg": 0.00005,
+    "simplify_deg": 5e-05,
     "page_size": 500,
     "verify": true
   },
   "pluto": {
     "url": "https://data.cityofnewyork.us/resource/64uk-42ks.json",
-    "fields": ["bbl", "borough", "block", "lot", "address", "zipcode", "bldgclass", "unitsres", "yearbuilt", "latitude", "longitude", "bct2020", "bldgarea", "comarea"],
+    "fields": [
+      "bbl",
+      "borough",
+      "block",
+      "lot",
+      "address",
+      "zipcode",
+      "bldgclass",
+      "unitsres",
+      "yearbuilt",
+      "latitude",
+      "longitude",
+      "bct2020",
+      "bldgarea",
+      "comarea"
+    ],
     "page_size": 50000,
     "verify": true
   },
   "li_parcels": {
     "note": "NYS ITS Tax Parcel Centroid Points: the statewide assessment roll, one point per property. Used for Nassau/Suffolk walk lists. Only address and building fields are requested — never owner names or mailing addresses. Year built, sq ft and heating fuel are only filled in where the town assessor reports them (parts of Suffolk).",
     "url": "https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcel_Centroid_Points/MapServer/0/query",
-    "counties": { "059": "Nassau", "103": "Suffolk" },
-    "fields": ["OBJECTID", "SWIS_PRINT_KEY_ID", "PARCEL_ADDR", "LOC_ZIP", "CITYTOWN_NAME", "PROP_CLASS", "YR_BLT", "SQFT_LIVING", "FUEL_TYPE_DESC", "HEAT_TYPE_DESC"],
+    "counties": {
+      "059": "Nassau",
+      "103": "Suffolk"
+    },
+    "fields": [
+      "OBJECTID",
+      "SWIS_PRINT_KEY_ID",
+      "PARCEL_ADDR",
+      "LOC_ZIP",
+      "CITYTOWN_NAME",
+      "PROP_CLASS",
+      "YR_BLT",
+      "SQFT_LIVING",
+      "FUEL_TYPE_DESC",
+      "HEAT_TYPE_DESC"
+    ],
     "page_size": 1000,
     "parallel": 4
   },
@@ -44,5 +76,11 @@
   "tract_relationship": {
     "url": "https://www2.census.gov/geo/docs/maps-data/data/rel2020/tract/tab20_tract20_tract10_st36.txt",
     "verify": true
+  },
+  "elections": {
+    "note": "2020 presidential results by voting precinct (official New York precincts), from The New York Times' precinct map, MIT license. Neighborhood-level only: shown on the tract card and as a Target filter. The 2024 version of this map is licensed for non-commercial use only, so it is not used.",
+    "url": "https://int.nyt.com/newsgraphics/elections/map-data/2020/national/precincts-with-results.geojson.gz",
+    "year": 2020,
+    "credit": "The New York Times (The Upshot), presidential precinct map 2020, MIT license; New York results and boundaries by Benjamin Rosenblatt"
   }
 }

@@ -1,5 +1,6 @@
 // m2 / pure scoring functions. No I/O — easy to test and tune.
 import { clamp01, round } from '../lib/util.js';
+import { samplePoints } from '../lib/geo.js';
 import { B19001_BRACKETS, RACE_GROUPS } from '../m1-ingest/acs.js';
 
 export function incomeBand(median, bands) {
@@ -157,7 +158,10 @@ export function shortName(name, renames = {}) {
 export function tractPeople(v, meta, cfg = {}) {
   const share = (x, tot) => (tot > 0 && x != null ? x / tot : null);
   const names = cfg.names || {};
-  const out = { race: null, languages: null, english_only: null, limited_english: null, born_abroad: null, birthplaces: null };
+  const out = { race: null, languages: null, english_only: null, limited_english: null, born_abroad: null, birthplaces: null, retired: null };
+
+  // Retired households: share of households with retirement income, and with Social Security.
+  if (v.B19059_001E > 0) out.retired = { retirement_income: round(share(v.B19059_002E, v.B19059_001E)), social_security: v.B19055_001E > 0 ? round(share(v.B19055_002E, v.B19055_001E)) : null };
 
   const pop = v.B03002_001E;
   if (pop > 0) {
@@ -193,4 +197,32 @@ export function tractPeople(v, meta, cfg = {}) {
       .slice(0, cfg.birthplace_max ?? 3);
   }
   return out;
+}
+
+// Election results come by voting precinct, which doesn't line up with census tracts.
+// Spread each precinct's votes over the tracts it covers, in proportion to how much of the
+// precinct falls in each (by evenly spaced sample points). locate(lon, lat) → { geoid } or null.
+export function votesByTract(precincts, locate, n = 8) {
+  const out = new Map();
+  for (const pr of precincts) {
+    const pts = samplePoints(pr.geometry, n);
+    const hits = new Map();
+    for (const [lon, lat] of pts) {
+      const t = locate(lon, lat);
+      if (t) hits.set(t.geoid, (hits.get(t.geoid) || 0) + 1);
+    }
+    for (const [geoid, k] of hits) {
+      const w = k / pts.length;
+      const cur = out.get(geoid) || { dem: 0, rep: 0, total: 0 };
+      cur.dem += pr.dem * w; cur.rep += pr.rep * w; cur.total += pr.total * w;
+      out.set(geoid, cur);
+    }
+  }
+  return out;
+}
+
+// Neighborhood vote shares for the tract card and the Target filter. Null when too few votes to say.
+export function voteShares(v, minVotes = 50) {
+  if (!v || !(v.total >= minVotes)) return null;
+  return { dem: round(v.dem / v.total), rep: round(v.rep / v.total), votes: Math.round(v.total) };
 }

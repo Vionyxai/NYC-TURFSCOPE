@@ -2,8 +2,8 @@
 import {
   config, readJSON, readJSONIfExists, writeJSON, raw, out, log, warn, round, activeCounties,
 } from '../lib/util.js';
-import { pointInFeatureCollection, roundGeometry, shareInside } from '../lib/geo.js';
-import { tractMetrics, scoreTract, incomeBand, dacFor2020, lotUtility, sizeBand, homeAgeBand, lotBusiness, tractPeople } from './score.js';
+import { pointInFeatureCollection, roundGeometry, shareInside, featureLocator } from '../lib/geo.js';
+import { tractMetrics, scoreTract, incomeBand, dacFor2020, lotUtility, sizeBand, homeAgeBand, lotBusiness, tractPeople, votesByTract, voteShares } from './score.js';
 
 const scoring = config('scoring.json');
 const util = config('utilities.json');
@@ -206,6 +206,18 @@ for (const f of geo.features) {
   });
 }
 
+// Voting: 2020 presidential results by precinct, spread over the tracts each precinct covers.
+const elections = readJSONIfExists(raw('precincts.json'));
+if (elections) {
+  const votes = votesByTract(elections.precincts, featureLocator(features));
+  let withVote = 0;
+  for (const f of features) {
+    f.properties.vote = voteShares(votes.get(f.properties.geoid), scoring.targeting?.vote_min_votes ?? 50);
+    if (f.properties.vote) withVote++;
+  }
+  log(`Voting · ${elections.year} president · ${elections.precincts.length} precincts → ${withVote} of ${features.length} tracts`);
+} else warn('No election data (data/raw/precincts.json) — the map will skip voting.');
+
 features.sort((x, y) => y.properties.score - x.properties.score);
 writeJSON(out('tracts.geojson'), { type: 'FeatureCollection', features });
 
@@ -229,6 +241,9 @@ writeJSON(out('summary.json'), {
     oil_focus: scoring.targeting?.oil_focus || null,
     oil_color_breaks: scoring.targeting?.oil_color_breaks || [0.1, 0.25, 0.4, 0.6],
     size_bands: scoring.targeting?.size_bands || [],
+    retired_bands: scoring.targeting?.retired_bands || [],
+    vote_bands: scoring.targeting?.vote_bands || [],
+    vote_year: elections ? elections.year : null,
     // Languages a rep can target, most spoken across the turf first.
     languages: [...langSpeakers].filter(([n]) => !/^Other\b/i.test(n)).sort((x, y) => y[1] - x[1])
       .slice(0, peopleCfg.language_filter_choices ?? 10).map(([n]) => n),

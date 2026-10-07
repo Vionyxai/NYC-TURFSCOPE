@@ -6,6 +6,7 @@ import { runPluto } from './pluto.js';
 import { runDAC } from './dac.js';
 import { runBusiness } from './business.js';
 import { runLiParcels } from './li_parcels.js';
+import { runElections } from './elections.js';
 
 const steps = [
   ['ACS', runACS, true],
@@ -15,6 +16,7 @@ const steps = [
   ['DAC', runDAC, false],
   ['Businesses', runBusiness, false],
   ['LI parcels', runLiParcels, false],
+  ['Elections', runElections, false],
 ];
 
 log(`Ingest · active counties: ${activeCounties().map((c) => c.name).join(', ')}`);
