@@ -11,6 +11,8 @@ jobs:
       - run: |
           set +e
           A="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
-          curl -sL -A "$A" "https://www.nassaucountyny.gov/571/Election-Results" -o r.htm; wc -c r.htm
-          grep -io '<a [^>]*href="[^"]*"[^>]*>[^<]*' r.htm | grep -i "2024\|2025\|result\|canvass\|district\|DocumentCenter\|xls\|csv" | sed 's/<a //' | head -40
-          grep -io 'https\?://[^"<> ]*\(enr\|clarity\|results\)[^"<> ]*' r.htm | sort -u | head
+          B=https://app.nassaucountyny.gov/BOE/results
+          curl -sL -A "$A" "$B/election2.html" -o e.htm -w "%{http_code} %{size_download}\n"; head -c 1500 e.htm; echo
+          grep -io '\(href\|src\)="[^"]*"' e.htm | sort -u | head -40
+          for f in $(grep -io 'src="[^"]*\.js[^"]*"' e.htm | sed 's/src="//;s/"$//' | grep -v "http" | head -5); do echo "-- $f"; curl -sL -A "$A" "$B/$f" | grep -o '"[^"]*\.\(json\|xml\|csv\|txt\|xls\|xlsx\|htm\|html\)[^"]*"\|url *: *"[^"]*"\|fetch([^)]*)\|\$\.get[^)]*)\|ajax[^)]*)' | sort -u | head -20; done
+          echo "== directory guesses"; for f in "" election.html results.json data/ 2024/ GE2024/ 24ge/ ; do curl -sL -A "$A" -m 15 -o /dev/null -w "$f %{http_code} %{size_download} %{content_type}\n" "$B/$f"; done
