@@ -10,12 +10,8 @@ jobs:
     steps:
       - run: |
           set +e
-          A="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
-          echo "== openelections-sources 2024/general LI"; curl -s "https://api.github.com/repos/openelections/openelections-sources-ny/contents/2024/general" | jq -r '.[]? | "\(.name) \(.size) \(.download_url)"' | grep -i "nassau\|suffolk"
-          echo "== Suffolk eleres 24ge"; for u in https://apps2.suffolkcountyny.gov/boe/eleres/24ge/default.htm https://apps2.suffolkcountyny.gov/boe/eleres/24ge/; do curl -sL -A "$A" -m 20 -o s.htm -w "%{http_code} %{size_download}\n" "$u"; grep -io 'href="[^"]*"' s.htm | head -30; done
-          echo "== Suffolk ED layer"; L=https://gis.suffolkcountyny.gov/server/rest/services/LocalGovernmentSQLData/VotingPrecinct/FeatureServer/0
-          curl -s "$L?f=json" | jq -c '{name, maxRecordCount, fields: [.fields[]?.name], extent: .extent.spatialReference}'
-          curl -s "$L/query?where=1%3D1&returnCountOnly=true&f=json"; echo
-          curl -s "$L/query?where=1%3D1&outFields=*&returnGeometry=false&resultRecordCount=3&f=json" | jq -c '.features[]?.attributes'
-          echo "== Nassau GIS folders"; for f in FeatureServices MapServices Hosted; do echo "-- $f"; curl -s "https://gis.nassaucountyny.gov/server/rest/services/$f?f=json" | jq -r '.services[]? | "\(.name) \(.type)"' | head -60; done
-          echo "== ArcGIS search Nassau"; for q in "Nassau%20County%20election%20district" "Nassau%20election%20district" "nassaucountyny%20election"; do curl -s "https://www.arcgis.com/sharing/rest/search?q=$q&num=10&f=json" | jq -r '.results[]? | [.type, .title, .owner, .url] | @tsv'; done
+          L=https://gis.suffolkcountyny.gov/server/rest/services/LocalGovernmentSQLData/VotingPrecinct/FeatureServer/0
+          curl -s "$L/query?where=1%3D1&outFields=PRECINCTID,NAME,MUNICIPALITY&returnGeometry=false&resultRecordCount=2000&f=json" | jq -r '.features[].attributes | "\(.PRECINCTID)|\(.NAME)"' | sort -t'|' -k1,1 > ids.txt
+          wc -l ids.txt; awk -F'|' '{split($2,a," ED#"); k=a[1]":"substr($1,1,length($1)-3)":"length($1); c[k]++} END{for(k in c) print k, c[k]}' ids.txt | sort
+          head -3 ids.txt; tail -3 ids.txt
+          curl -s "$L/query?where=1%3D1&outFields=PRECINCTID&outSR=4326&f=geojson&resultRecordCount=1" | head -c 400; echo
