@@ -11,8 +11,14 @@ jobs:
       - run: |
           set +e
           A="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
-          for u in "https://www.nassaucountyny.gov/566/Board-of-Elections" "https://www.nassaucountyny.gov/Directory.aspx?DID=33" "https://www.nassaucountyny.gov/2219/Freedom-of-Information-Law-FOIL" "https://www.nassaucountyny.gov/FOIL" "https://www.nassaucountyny.gov/Search?searchPhrase=FOIL%20board%20of%20elections"; do
-            echo "== $u"; curl -sL -A "$A" -m 20 -o p.htm -w "%{http_code} %{url_effective}\n" "$u"
-            sed 's/<[^>]*>/ /g; s/&nbsp;/ /g' p.htm | tr -s ' \t' ' ' | grep -i -o ".\{0,90\}\(FOIL\|Freedom of Information\|Records Access\|@nassaucountyny\.gov\|Old Country\|516[-) .]*571\).\{0,90\}" | sort -u | head -12
-            grep -io 'href="[^"]*\(foil\|freedom\|records\|mailto\)[^"]*"' p.htm | sort -u | head -8
-          done
+          curl -sL -A "$A" "https://www.nassaucountyny.gov/573/FOIL-Requests" -o f.htm -w "%{http_code}\n"
+          python3 - <<'PY'
+          import re,html
+          t=open('f.htm',encoding='utf-8',errors='ignore').read()
+          m=re.search(r'<div[^>]*id="page"[^>]*>(.*)', t, re.S) or re.search(r'<main.*', t, re.S)
+          body=m.group(0) if m else t
+          for a in re.findall(r'href="([^"]*)"[^>]*>([^<]*)', body):
+              if re.search(r'foil|form|mailto|pdf|apex|request', a[0]+a[1], re.I): print('LINK', a)
+          txt=html.unescape(re.sub(r'<[^>]+>',' ',body)); txt=re.sub(r'\s+',' ',txt)
+          i=txt.find('FOIL'); print(txt[max(0,i-200):i+2500])
+          PY
