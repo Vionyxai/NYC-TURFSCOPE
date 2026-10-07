@@ -1,0 +1,23 @@
+# TEMPORARY: look for official 2024 results by election district. Removed after use.
+name: Probe
+on:
+  push:
+    branches: [claude/code-review-testing-q7elwy]
+    paths: [.github/workflows/probe.yml]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          set +e
+          echo "== openelections 2024 dir"; curl -s "https://api.github.com/repos/openelections/openelections-data-ny/contents/2024" | jq -r '.[]?.name' | grep -i "general\|nassau\|suffolk\|kings\|queens" | head -20
+          echo "== openelections-sources 2024"; curl -s "https://api.github.com/repos/openelections/openelections-sources-ny/contents/2024" | jq -r '.[]?.name' | head -40
+          U='https://vote.nyc/sites/default/files/pdf/election_results/2024/20241105General%20Election/00000100000Citywide%20President%20Vice%20President%20Citywide%20EDLevel.csv'
+          echo "== NYC BOE ED csv"; curl -sL -A "Mozilla/5.0" -o ed.csv -w "%{http_code} %{size_download} %{content_type}\n" "$U"; head -c 700 ed.csv; echo; wc -l ed.csv
+          echo "== NYC BOE results page links"; curl -sL -A "Mozilla/5.0" "https://vote.nyc/page/election-results-summary-2024" | grep -o 'href="[^"]*2024[^"]*General[^"]*"' | head -15
+          echo "== NYC ED shapes (Planning)"; for s in "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/NYC_Election_Districts/FeatureServer/0?f=json" "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/nyed/FeatureServer/0?f=json"; do curl -s "$s" | jq -c '{name, fields: [.fields[]?.name], err: .error.message}' ; done
+          curl -s "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/NYC_Election_Districts/FeatureServer/0/query?where=1%3D1&outFields=*&returnGeometry=false&resultRecordCount=2&f=json" | jq -c '.features'
+          curl -s "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/NYC_Election_Districts/FeatureServer/0/query?where=1%3D1&returnCountOnly=true&f=json"
+          echo "== Nassau BOE"; curl -sL -A "Mozilla/5.0" "https://www.nassaucountyny.gov/552/Board-of-Elections" | grep -io 'href="[^"]*\(result\|election\)[^"]*"' | sort -u | head -15
+          echo "== Suffolk BOE"; curl -sL -A "Mozilla/5.0" "https://www.suffolkvotes.com/" | grep -io 'href="[^"]*result[^"]*"' | sort -u | head -15
+          echo "== NYS GIS election districts"; curl -s "https://gisservices.its.ny.gov/arcgis/rest/services?f=json" | jq -r '.services[]?.name, .folders[]?' | grep -i "elect\|district\|vot" | head
