@@ -119,6 +119,10 @@
   .tag small { color: var(--muted); font-size: 12px; }
   .tag button { min-width: 44px; min-height: 44px; border: 0; background: none; color: var(--muted); font-size: 22px; line-height: 1; }
   .tagadd { display: flex; gap: 8px; margin-top: 8px; }
+  .sres { display: block; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--fg); font: inherit; padding: 12px 4px; min-height: 52px; }
+  .sres small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .found { margin: 10px 0; padding: 10px 12px; border-radius: 12px; background: var(--chip); }
+  .found .btn { margin-top: 8px; }
   .tagadd input { flex: 1; min-width: 0; font-size: 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--chip); color: var(--fg); }
   .tagadd .btn { width: auto; margin: 0; padding: 10px 18px; }
   .mix { display: flex; height: 12px; border-radius: 6px; overflow: hidden; margin: 6px 0; background: var(--line); }
@@ -211,6 +215,15 @@
 <div class="sheet" id="acctSheet"><div class="grab"></div><div id="acctBody"></div></div>
 <div class="sheet" id="knockSheet"><div class="grab"></div><div id="knockBody"></div></div>
 <div class="sheet" id="noteSheet"><div class="grab"></div><div id="noteBody"></div></div>
+<div class="sheet" id="searchSheet"><div class="grab"></div>
+  <div class="row"><div class="title">Find an address</div><button class="chip" id="searchClose">Close</button></div>
+  <form id="searchForm" class="tagadd" autocomplete="off">
+    <input type="search" id="searchInput" placeholder="e.g. 138-04 109 Ave, Jamaica" enterkeyhint="search" aria-label="Address">
+    <button class="btn" type="submit">Search</button>
+  </form>
+  <div class="err" id="searchErr"></div>
+  <div id="searchResults"></div>
+</div>
 <div class="toast" id="toast"><span id="toastText"></span><button id="toastUndo">Undo</button></div>
 
 <div class="panel" id="panel">
@@ -503,6 +516,7 @@
         <div><span>House size</span>${p.size_band ? `${esc(sizeLabel(p.size_band))} <small class="meta">${p.size_basis === 'sqft' ? `median ${Math.round(p.size_value).toLocaleString()} sq ft` : `median ${p.size_value} rooms`}</small>` : '—'}</div>
         <div><span>Heat: oil / gas / elec</span>${pct(fuel.oil)} / ${pct(fuel.gas)} / ${pct(fuel.electric)}</div>
       </div>
+      ${searchHit && searchHit.geoid === p.geoid ? `<div class="found"><div>📍 <b>${esc(searchHit.address)}</b> is in this tract</div>${hasList ? '<button class="btn" id="findHouseBtn">Find this house in the walk list</button>' : ''}</div>` : ''}
       ${peopleBlock(p)}
       <div class="bars">
         <div class="meta" style="margin-bottom:4px">Why it scores ${p.score} out of 100</div>
@@ -522,6 +536,8 @@
     openedAt = Date.now();
     document.getElementById('closeSheet').onclick = () => { openedAt = 0; closeSheet(); };
     if (hasList) document.getElementById('walkBtn').onclick = () => openWalk(p);
+    const fh = document.getElementById('findHouseBtn');
+    if (fh) fh.onclick = async () => { await openWalk(p); findHouse(); };
     if (canKnock()) {
       paintTractTeam(p);
       K.loadTract(p.geoid).catch(() => { /* offline: show what we have */ });   // area notes + house statuses; the card repaints on arrival
@@ -715,14 +731,79 @@
     let i = rows.findIndex((r, j) => j > lastMine && !K.latest(r.bbl));
     if (i < 0) i = rows.findIndex((r) => !K.latest(r.bbl));
     if (i < 0) { toast('Every house here has been knocked'); return; }
+    if (highlightRow(i)) toast(`${lastMine >= 0 ? 'Picking up at' : 'Starting at'} ${rows[i].address}`);
+  }
+  // Scroll the walk list to a house and light it up for a few seconds.
+  function highlightRow(i) {
+    const rows = walk.shown;
     const el = document.querySelector(`#panelList .item[data-w="${i}"]`);
-    if (!el) return;
+    if (!el) return false;
     el.scrollIntoView({ block: 'center' });
     walk.hl = rows[i].bbl; walk.hlUntil = Date.now() + 6000;       // survives the list's auto-refresh
     el.classList.add('row-hl');
     setTimeout(() => { walk.hl = null; document.querySelectorAll('#panelList .row-hl').forEach((x) => x.classList.remove('row-hl')); }, 6000);
-    toast(`${lastMine >= 0 ? 'Picking up at' : 'Starting at'} ${rows[i].address}`);
+    return true;
   }
+
+  // ---------- Address search ----------
+  // NYS address locator (config/sources.json → geocoder): type an address, pick a match,
+  // the map flies there, opens the tract card, and can jump to the house in the walk list.
+  const GEO = (appCfg && appCfg.geocoder) || null;
+  let searchHit = null, searchMarker = null;
+  // The walk-list house closest to the searched spot (within near_house_metres), ignoring list filters.
+  function findHouse() {
+    if (!searchHit || !walk.rows) return;
+    const near = (rows) => {
+      let best = -1, bestD = Infinity;
+      rows.forEach((r, i) => { if (r.lat == null) return; const d = metres([searchHit.lat, searchHit.lon], [r.lat, r.lon]); if (d < bestD) { bestD = d; best = i; } });
+      return bestD <= ((GEO && GEO.near_house_metres) || 60) ? best : -1;
+    };
+    const i = near(walk.shown || []);
+    if (i >= 0 && highlightRow(i)) { toast(`Here it is: ${walk.shown[i].address}`); return; }
+    if (near(walk.rows) >= 0) toast('That house is hidden by a filter (Hide done, Oil only or Target house filters).');
+    else toast('That address isn’t in the walk list (it may not be a 1–4 family home).');
+  }
+  function openSearch() {
+    document.getElementById('sheet').classList.remove('open');
+    document.getElementById('searchSheet').classList.add('open');
+    setTimeout(() => document.getElementById('searchInput').focus(), 50);
+  }
+  function goToHit(c) {
+    document.getElementById('searchSheet').classList.remove('open');
+    document.getElementById('searchInput').blur();
+    const lat = c.location.y, lon = c.location.x;
+    const f = tractAt(lon, lat);
+    searchHit = { address: c.address.replace(/, (\d{5})$/, ' $1'), lat, lon, geoid: f ? f.properties.geoid : null };
+    if (searchMarker) searchMarker.remove();
+    searchMarker = L.circleMarker([lat, lon], { radius: 10, color: '#fff', weight: 3, fillColor: '#dc2626', fillOpacity: 1 }).addTo(map);
+    map.setView([lat, lon], 17);
+    if (f) openSheet(f.properties);
+    else toast('That address is outside TurfScope’s turf area.');
+  }
+  async function runSearch(e) {
+    e.preventDefault();
+    const q = document.getElementById('searchInput').value.trim();
+    const err = document.getElementById('searchErr'), out = document.getElementById('searchResults');
+    err.textContent = ''; out.innerHTML = '';
+    if (!GEO) { err.textContent = 'Search isn’t set up.'; return; }
+    if (q.length < 4) { err.textContent = 'Type a house number and street.'; return; }
+    out.innerHTML = '<div class="meta">Searching…</div>';
+    const params = new URLSearchParams({ SingleLine: /\bNY\b/i.test(q) ? q : `${q}, NY`, outSR: '4326', maxLocations: String(GEO.max_results || 5), outFields: 'Score', searchExtent: GEO.search_extent || '', f: 'json' });
+    let cands;
+    try {
+      const j = await fetch(`${GEO.url}?${params}`).then((r) => r.json());
+      cands = (j.candidates || []).filter((c) => c.score >= (GEO.min_score || 80) && c.location);
+    } catch (ex) { out.innerHTML = ''; err.textContent = 'No signal: address search needs internet.'; return; }
+    const seen = new Set();
+    cands = cands.filter((c) => { const k = c.address.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+    if (!cands.length) { out.innerHTML = ''; err.textContent = 'No match. Try adding the town or ZIP (e.g. “12 Elm St, Massapequa”).'; return; }
+    if (cands.length === 1 || cands[0].score === 100 && cands[1].score < 100) { out.innerHTML = ''; goToHit(cands[0]); return; }
+    out.innerHTML = cands.map((c, i) => { const f = tractAt(c.location.x, c.location.y);
+      return `<button class="sres" data-i="${i}">${esc(c.address)}<small>${f ? `${esc(f.properties.county_name)} · tract ${esc(f.properties.geoid.slice(5))}` : 'outside the turf area'}</small></button>`; }).join('');
+    out.querySelectorAll('.sres').forEach((b) => (b.onclick = () => goToHit(cands[Number(b.dataset.i)])));
+  }
+  document.getElementById('searchForm').onsubmit = runSearch;
+  document.getElementById('searchClose').onclick = () => document.getElementById('searchSheet').classList.remove('open');
 
   // Team-wide: who has which turf, and the pins. Redraw the map only when that changes.
   let teamSig = '';
@@ -1237,6 +1318,16 @@
     L.DomEvent.disableClickPropagation(d);
     return d;
   } });
+  const SearchCtl = L.Control.extend({ onAdd() {
+    const b = L.DomUtil.create('button', 'locate');
+    b.id = 'searchBtn'; b.type = 'button'; b.title = 'Find an address'; b.setAttribute('aria-label', 'Find an address');
+    b.style.marginBottom = '8px';
+    b.onclick = () => openSearch();
+    b.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>';
+    L.DomEvent.disableClickPropagation(b);
+    return b;
+  } });
+  if (GEO) new SearchCtl({ position: 'topright' }).addTo(map);
   new LocateCtl({ position: 'topright' }).addTo(map);
   new HereCtl({ position: 'topleft' }).addTo(map);
   const PinCtl = L.Control.extend({ onAdd() {

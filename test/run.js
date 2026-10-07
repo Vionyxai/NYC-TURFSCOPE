@@ -331,6 +331,10 @@ t('app config: publishable key accepted, secret keys refused', () => {
   assert.equal(app.supabase.key, 'sb_publishable_x');
   assert.equal(app.statuses.length, 5);
   assert.equal(buildAppConfig({}, team).supabase, null);
+  const geo = buildAppConfig({}, team, readCfg('sources.json').geocoder).geocoder;    // address search settings reach the map, minus the note
+  assert.match(geo.url, /^https:\/\/.+findAddressCandidates$/);
+  assert.equal(geo.note, undefined);
+  assert.ok(geo.min_score > 0 && geo.max_results > 0);
 });
 
 // ---------- end-to-end on fixtures ----------

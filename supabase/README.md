@@ -81,6 +81,7 @@ Heads-up: the home-screen app and Safari keep separate logins. Sign in inside th
 ## Day to day
 - **Pick turf:** tap a tract → **Claim**. The map outlines it in your color with your name (Issac purple, Matt teal, Kai pink, Gio brown). **Finished** makes it dashed; **Avoid** makes it dark dotted; **Open** releases it. Any rep can change any area. "Undo last area change" takes back your own.
 - **Knock:** open the walk list → tap a house → pick a status. "Come back" asks when. The black bar has **Undo** for 6 seconds; later use "Undo last knock" in the house's sheet.
+- **Find an address:** tap 🔍 (top right of the map), type the house number and street (add the town if it's common), tap Search. The map flies there, opens that tract's card, and **Find this house in the walk list** jumps to the house.
 - **Area tags:** on a tract card, tap a suggestion ("+ Lots of dogs") or type your own (40 characters, no names or numbers). Everyone sees them with your name; × removes your own.
 - **Notes:** in a house's sheet (house notes), on a tract card (area notes), or tap the **pin** button (top right, under locate) to drop a pin at your location or anywhere you tap. Everyone sees them right away.
 - **My stuff:** tap your name, top right. It shows your claimed turf, your come-backs and interested houses (tap to jump there) and the team's numbers today. The **Mine** button shows only your turf on the map.

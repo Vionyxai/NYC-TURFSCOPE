@@ -118,5 +118,13 @@
     "count_cols": 2,
     "width": 4,
     "credit": "Suffolk County Board of Elections, General Election 2024 results by election district (via OpenElections); Suffolk County election district map"
+  },
+  "geocoder": {
+    "note": "Address search in the map app: New York State's official address locator (NYS ITS), free, no key, covers NYC and Long Island. The phone sends the typed address straight to it. search_extent keeps matches near the turf (xmin,ymin,xmax,ymax in lon/lat); min_score drops weak guesses.",
+    "url": "https://gisservices.its.ny.gov/arcgis/rest/services/Locators/Street_and_Address_Composite/GeocodeServer/findAddressCandidates",
+    "max_results": 5,
+    "min_score": 80,
+    "search_extent": "-74.3,40.45,-71.8,41.2",
+    "near_house_metres": 60
   }
 }
