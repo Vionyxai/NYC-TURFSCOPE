@@ -7,6 +7,7 @@ import { runDAC } from './dac.js';
 import { runBusiness } from './business.js';
 import { runLiParcels } from './li_parcels.js';
 import { runElections } from './elections.js';
+import { runElectionsNyc } from './elections_nyc.js';
 
 const steps = [
   ['ACS', runACS, true],
@@ -17,6 +18,7 @@ const steps = [
   ['Businesses', runBusiness, false],
   ['LI parcels', runLiParcels, false],
   ['Elections', runElections, false],
+  ['Elections NYC 2024', runElectionsNyc, false],
 ];
 
 log(`Ingest · active counties: ${activeCounties().map((c) => c.name).join(', ')}`);

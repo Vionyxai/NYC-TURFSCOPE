@@ -344,7 +344,7 @@
         ${p.limited_english != null ? `<div><span>Limited English</span>${pct(p.limited_english)} <small class="meta">speak English less than "very well" (bring translated material or a bilingual rep)</small></div>` : ''}
         ${p.born_abroad != null ? `<div><span>Born in another country</span>${pct(p.born_abroad)}</div>` : ''}
         ${p.birthplaces && p.birthplaces.length ? `<div><span>Most common countries of birth</span>${list(p.birthplaces, 3)}</div>` : ''}
-        ${p.vote ? `<div><span>${TG.vote_year || ''} vote for president</span>Democratic ${pct(p.vote.dem)} · Republican ${pct(p.vote.rep)} <small class="meta">precinct results, about ${p.vote.votes.toLocaleString()} votes</small></div>` : ''}
+        ${p.vote ? `<div><span>${p.vote.year || TG.vote_year || ''} vote for president</span>Democratic ${pct(p.vote.dem)} · Republican ${pct(p.vote.rep)} <small class="meta">precinct results, about ${p.vote.votes.toLocaleString()} votes</small></div>` : ''}
         ${p.retired ? `<div><span>Retired households</span>${pct(p.retired.retirement_income)} get retirement income <small class="meta">(pension, 401k/IRA)</small>${p.retired.social_security != null ? ` · ${pct(p.retired.social_security)} get Social Security` : ''} <small class="meta">% of households</small></div>` : ''}
       </div>
       ${race ? `<div class="meta" style="margin-top:6px">Neighborhood makeup (background only, not used in TurfScore or filters)</div>${race}` : ''}
@@ -866,7 +866,9 @@
     ['tgRet', 'rets', TG.retired_bands],
     ['tgVote', 'votes', TG.vote_bands],
   ];
-  if (TG.vote_year) document.getElementById('tgVoteTitle').textContent = `Voting (${TG.vote_year} president, neighborhood)`;
+  const voteYearsText = Object.entries(TG.vote_years || {}).reduce((m, [c, y]) => ((m[y] = m[y] || []).push(c), m), {});
+  if (TG.vote_year) document.getElementById('tgVoteTitle').textContent = `Voting for president, by neighborhood (${Object.keys(voteYearsText).length > 1
+    ? Object.entries(voteYearsText).sort((a, b) => b[0] - a[0]).map(([y, cs]) => `${y}: ${cs.join(', ')}`).join(' · ') : TG.vote_year})`;
   if (!TG.vote_bands.length || !TG.vote_year) document.getElementById('tgVoteGroup').style.display = 'none';
   if (!TG.retired_bands.length) document.getElementById('tgRetGroup').style.display = 'none';
   document.getElementById('tgLangTitle').textContent = `Language at home (${Math.round(LANG_MIN * 100)}%+ of residents)`;

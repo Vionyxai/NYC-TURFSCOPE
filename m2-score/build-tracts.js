@@ -206,17 +206,30 @@ for (const f of geo.features) {
   });
 }
 
-// Voting: 2020 presidential results by precinct, spread over the tracts each precinct covers.
-const elections = readJSONIfExists(raw('precincts.json'));
-if (elections) {
-  const votes = votesByTract(elections.precincts, featureLocator(features));
-  let withVote = 0;
-  for (const f of features) {
-    f.properties.vote = voteShares(votes.get(f.properties.geoid), scoring.targeting?.vote_min_votes ?? 50);
-    if (f.properties.vote) withVote++;
+// Voting: presidential results by precinct / election district, spread over the tracts each covers.
+// Several sources (official 2024 NYC districts, 2020 statewide): each tract uses the newest one
+// that covers its county.
+const voteSets = ['precincts_nyc.json', 'precincts.json'].map((n) => readJSONIfExists(raw(n))).filter(Boolean)
+  .sort((a, b) => b.year - a.year);
+const voteYears = {};
+if (voteSets.length) {
+  const locate = featureLocator(features);
+  for (const set of voteSets) {
+    set.counties = new Set(set.precincts.map((p) => p.county));
+    set.votes = votesByTract(set.precincts, locate);
   }
-  log(`Voting · ${elections.year} president · ${elections.precincts.length} precincts → ${withVote} of ${features.length} tracts`);
-} else warn('No election data (data/raw/precincts.json) — the map will skip voting.');
+  for (const f of features) {
+    f.properties.vote = null;
+    for (const set of voteSets) {
+      if (!set.counties.has(f.properties.county)) continue;
+      const v = voteShares(set.votes.get(f.properties.geoid), scoring.targeting?.vote_min_votes ?? 50);
+      if (v) { f.properties.vote = { ...v, year: set.year }; voteYears[f.properties.county_name] = set.year; break; }
+    }
+  }
+  const byYear = {};
+  for (const f of features) if (f.properties.vote) byYear[f.properties.vote.year] = (byYear[f.properties.vote.year] || 0) + 1;
+  log(`Voting · ${Object.entries(byYear).map(([y, n]) => `${y}: ${n} tracts`).join(' · ')} of ${features.length}`);
+} else warn('No election data (data/raw/precincts*.json) — the map will skip voting.');
 
 features.sort((x, y) => y.properties.score - x.properties.score);
 writeJSON(out('tracts.geojson'), { type: 'FeatureCollection', features });
@@ -243,7 +256,8 @@ writeJSON(out('summary.json'), {
     size_bands: scoring.targeting?.size_bands || [],
     retired_bands: scoring.targeting?.retired_bands || [],
     vote_bands: scoring.targeting?.vote_bands || [],
-    vote_year: elections ? elections.year : null,
+    vote_year: voteSets.length ? voteSets[0].year : null,
+    vote_years: voteYears,                                 // county → election year used, e.g. { Brooklyn: 2024, Suffolk: 2020 }
     // Languages a rep can target, most spoken across the turf first.
     languages: [...langSpeakers].filter(([n]) => !/^Other\b/i.test(n)).sort((x, y) => y[1] - x[1])
       .slice(0, peopleCfg.language_filter_choices ?? 10).map(([n]) => n),

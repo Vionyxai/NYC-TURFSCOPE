@@ -13,6 +13,7 @@ import { incomeBand, dacFor2020, lotUtility, lotScore, ownerAgeShares, sizeBand,
 import { addrKey, compareLots, packWalk, unpackWalk, tractLocator } from '../m4-walklists/build.js';
 import { fuelKey, parcelToLot, statRange } from '../m1-ingest/li_parcels.js';
 import { featureSplitter, precinctFromFeature } from '../m1-ingest/elections.js';
+import { csvFields, parseEdResults } from '../m1-ingest/elections_nyc.js';
 import { pointInFeatureCollection, shareInside } from '../lib/geo.js';
 import { checkSupabase, buildAppConfig } from '../scripts/app-config.js';
 import vm from 'node:vm';
@@ -118,6 +119,23 @@ t('elections: stream features out of a huge file, keep our counties, split votes
   assert.equal(Math.round(v.get('B').total), 355);
   assert.deepEqual({ ...voteShares(v.get('A')) }, { dem: 0.85, rep: 0.14, votes: 355 });
   assert.equal(voteShares({ dem: 10, rep: 5, total: 20 }, 50), null);   // too few votes to say
+});
+t('NYC 2024 results: BOE ED-level file → Harris / Trump / total per election district', () => {
+  assert.deepEqual(csvFields('"23","001","Queens",,"1,149"'), ['23', '001', 'Queens', '', '1,149']);
+  const H = '"AD","ED","County","EDAD Status","Event","Party/Independent Body","Office/Position Title","District Key","VoteFor","Unit Name","Tally"';
+  const row = (ad, ed, county, unit, n) => `${H},"${ad}","${ed}","${county}","IN-PLAY","General Election 2024 - 11/05/2024",,"President/Vice President","NYC",1,"${unit}",${n}`;
+  const text = [
+    row('23', '001', 'Queens', 'Public Counter', '"1,149"'), row('23', '001', 'Queens', 'Absentee / Military', 158),
+    row('23', '001', 'Queens', 'Kamala D. Harris / Tim Walz (Democratic)', 281), row('23', '001', 'Queens', 'Donald J. Trump / JD Vance (Republican)', 862),
+    row('23', '001', 'Queens', 'Donald J. Trump / JD Vance (Conservative)', 149), row('23', '001', 'Queens', 'Kamala D. Harris / Tim Walz (Working Families)', 14),
+    row('23', '001', 'Queens', 'Scattered', 13), row('37', '071', 'New York', 'Kamala D. Harris / Tim Walz (Democratic)', 500),
+    row('43', '010', 'Kings', 'Kamala D. Harris / Tim Walz (Democratic)', '"1,020"'),
+  ].join('\n');
+  const cfg = readCfg('sources.json').elections_nyc;
+  const r = parseEdResults(text, cfg, new Set(['081', '047']));
+  assert.deepEqual({ ...r.get(23001) }, { county: '081', dem: 295, rep: 1011, total: 1319 });   // ballot counts skipped, write-ins in the total
+  assert.equal(r.get(43010).dem, 1020);
+  assert.equal(r.has(37071), false);                                                       // Manhattan not active
 });
 t('PLUTO bct2020 → GEOID', () => {
   assert.equal(plutoTractGeoid('4012300'), '36081012300');
@@ -346,6 +364,11 @@ fs.writeFileSync(path.join(RAW, 'li_parcels.json'), JSON.stringify([
 // 2020 precinct results: one precinct covering the Queens tract (and some empty land beside it).
 fs.writeFileSync(path.join(RAW, 'precincts.json'), JSON.stringify({ year: 2020, precincts: [
   { id: '36081-1', county: '081', dem: 700, rep: 280, total: 1000, geometry: { type: 'Polygon', coordinates: [[[-73.81, 40.71], [-73.79, 40.71], [-73.79, 40.73], [-73.81, 40.73], [-73.81, 40.71]]] } },
+  { id: '36059-1', county: '059', dem: 450, rep: 530, total: 1000, geometry: { type: 'Polygon', coordinates: [[[-73.61, 40.69], [-73.59, 40.69], [-73.59, 40.71], [-73.61, 40.71], [-73.61, 40.69]]] } },
+] }));
+// Official 2024 NYC election districts: the same Queens area, newer results (these win in NYC).
+fs.writeFileSync(path.join(RAW, 'precincts_nyc.json'), JSON.stringify({ year: 2024, precincts: [
+  { id: 'ED 23001', county: '081', dem: 550, rep: 430, total: 1000, geometry: { type: 'Polygon', coordinates: [[[-73.81, 40.71], [-73.79, 40.71], [-73.79, 40.73], [-73.81, 40.73], [-73.81, 40.71]]] } },
 ] }));
 fs.writeFileSync(path.join(RAW, 'business_by_bbl.json'), JSON.stringify({ '103 88 AVENUE': ['Home Improvement Contractor'] }));
 // Villages with their own electric utility: one covers the whole Suffolk tract, one a quarter of Nassau's.
@@ -438,9 +461,11 @@ t('who lives here on tracts + language filter choices in the summary', () => {
   assert.equal(summary.targeting.language_min_share, 0.15);
   assert.deepEqual({ ...q.retired }, { retirement_income: 0.38, social_security: 0.45 });
   assert.deepEqual(summary.targeting.retired_bands.map((b) => b.min), [0.25, 0.35, 0.45]);
-  assert.deepEqual({ ...q.vote }, { dem: 0.7, rep: 0.28, votes: 1000 });
-  assert.equal(by[T.nassau].vote, null);                                    // no precinct there
-  assert.equal(summary.targeting.vote_year, 2020);
+  assert.deepEqual({ ...q.vote }, { dem: 0.55, rep: 0.43, votes: 1000, year: 2024 });        // NYC: official 2024 districts win over 2020
+  assert.deepEqual({ ...by[T.nassau].vote }, { dem: 0.45, rep: 0.53, votes: 1000, year: 2020 }); // Long Island: 2020 file
+  assert.equal(by[T.suffolk].vote, null);                                                   // no precinct there
+  assert.equal(summary.targeting.vote_year, 2024);
+  assert.deepEqual({ ...summary.targeting.vote_years }, { Queens: 2024, Nassau: 2020 });
   assert.deepEqual(summary.targeting.vote_bands.map((b) => b.min), [0.5, 0.6, 0.7]);
   // Race is background only: not in the score parts, not a filter choice.
   assert.ok(!Object.keys(q.parts).some((k) => /race|hispanic|white|black|asian/.test(k)));

@@ -82,5 +82,21 @@
     "url": "https://int.nyt.com/newsgraphics/elections/map-data/2020/national/precincts-with-results.geojson.gz",
     "year": 2020,
     "credit": "The New York Times (The Upshot), presidential precinct map 2020, MIT license; New York results and boundaries by Benjamin Rosenblatt"
+  },
+  "elections_nyc": {
+    "note": "Official 2024 presidential results by election district from the NYC Board of Elections (ED-level CSV), joined to NYC Planning's election district map by ElectDist = assembly district × 1000 + election district. Public records. Harris = Democratic + Working Families lines; Trump = Republican + Conservative lines; total includes write-ins (Scattered).",
+    "url": "https://vote.nyc/sites/default/files/pdf/election_results/2024/20241105General%20Election/00000100000Citywide%20President%20Vice%20President%20Citywide%20EDLevel.csv",
+    "shapes_url": "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/NYC_Election_Districts/FeatureServer/0/query",
+    "page_size": 1000,
+    "year": 2024,
+    "dem_parties": [
+      "Democratic",
+      "Working Families"
+    ],
+    "rep_parties": [
+      "Republican",
+      "Conservative"
+    ],
+    "credit": "NYC Board of Elections, General Election 2024 results by election district; NYC Department of City Planning election district map"
   }
 }
