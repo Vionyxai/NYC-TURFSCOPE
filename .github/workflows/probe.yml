@@ -1,0 +1,22 @@
+# TEMPORARY: reproduce the pasted-address search miss. Removed after use.
+name: Probe
+on:
+  push:
+    branches: [claude/code-review-testing-q7elwy]
+    paths: [.github/workflows/probe.yml]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          set +e
+          L=https://gisservices.its.ny.gov/arcgis/rest/services/Locators/Street_and_Address_Composite/GeocodeServer/findAddressCandidates
+          E='{"xmin":-74.3,"ymin":40.45,"xmax":-71.8,"ymax":41.2,"spatialReference":{"wkid":4326}}'
+          q() { printf -- "-- %s\n" "$1"; curl -s -G "$L" --data-urlencode "SingleLine=$1" --data-urlencode "outSR=4326" --data-urlencode "maxLocations=5" --data-urlencode "outFields=Score" --data-urlencode "searchExtent=$E" --data-urlencode "f=json" | jq -c '[.candidates[]? | {a: .address, s: .score}]'; }
+          for n in 10 45 120; do
+            q "$n E Maple St Valley Stream, NY  11580 United States"
+            q "$n E Maple St Valley Stream, NY  11580 United States, NY"
+            q "$n E Maple St, Valley Stream, NY 11580"
+            q "$n E Maple St Valley Stream NY 11580"
+            q "$n East Maple St, Valley Stream, NY"
+          done
