@@ -121,6 +121,8 @@
   .tagadd { display: flex; gap: 8px; margin-top: 8px; }
   .sres { display: block; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--fg); font: inherit; padding: 12px 4px; min-height: 52px; }
   .sres small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .appt-pin { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; background: #fff; border: 3px solid; font-size: 17px; box-shadow: 0 1px 4px rgba(0,0,0,.35); }
+  input.when { width: 100%; font-size: 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--chip); color: var(--fg); min-height: 44px; }
   .found { margin: 10px 0; padding: 10px 12px; border-radius: 12px; background: var(--chip); }
   .found .btn { margin-top: 8px; }
   .tagadd input { flex: 1; min-width: 0; font-size: 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--chip); color: var(--fg); }
@@ -201,7 +203,7 @@
   <div class="meta">Pick any mix. Nothing picked in a group means any.</div>
   <button class="btn" id="oilFocus" style="background:#92400e;color:#fff">Oil focus</button>
   <div class="group"><h4>Heating oil (share of homes heated with oil)</h4><div class="row" id="tgOil"></div></div>
-  <div class="group"><h4>Color the map by</h4><div class="seg" id="colorBy"><button data-c="score" class="on">TurfScore</button><button data-c="oil">Oil %</button></div></div>
+  <div class="group"><h4>Color the map by</h4><div class="seg" id="colorBy"><button data-c="score" class="on">TurfScore</button><button data-c="oil">Oil %</button><button data-c="appts" id="colorAppts" style="display:none">📅 Appointments</button></div></div>
   <div class="group"><h4>Income (tract median)</h4><div class="row" id="tgIncome"></div></div>
   <div class="group"><h4>Home age (year built)</h4><div class="row" id="tgHome"></div></div>
   <div class="group"><h4>Homeowner age (rough estimate) — more than usual</h4><div class="row" id="tgAge"></div></div>
@@ -297,6 +299,11 @@
   document.getElementById('legendBar').innerHTML = COLORS.map((c) => `<span style="background:${c}"></span>`).join('');
   function paintLegend() {
     const oil = state.colorBy === 'oil';
+    if (state.colorBy === 'appts') {
+      document.getElementById('legendTitle').textContent = 'Team appointments per tract';
+      document.getElementById('legendScale').innerHTML = `<span>1</span><span>${APPT_BREAKS[APPT_BREAKS.length - 1]}+</span>`;
+      return;
+    }
     document.getElementById('legendTitle').textContent = oil ? 'Homes heated with oil' : 'TurfScore';
     const br = (typeof OIL_BREAKS !== 'undefined' ? OIL_BREAKS : [0.1, 0.25, 0.4, 0.6]);
     document.getElementById('legendScale').innerHTML = oil ? `<span>0%</span><span>${Math.round(br[br.length - 1] * 100)}%+</span>` : '<span>0</span><span>100</span>';
@@ -312,7 +319,12 @@
   const oilMin = () => Math.min(...[...state.oils].map((k) => (TG.oil_bands.find((b) => b.key === k) || { min: 0 }).min));
   const OIL_BREAKS = TG.oil_color_breaks || [0.1, 0.25, 0.4, 0.6];
   const oilColor = (x) => COLORS[x == null ? 0 : OIL_BREAKS.filter((b) => x >= b).length];
-  const fillFor = (p) => (state.colorBy === 'oil' ? oilColor(oilOf(p)) : colorFor(p.score));
+  // Appointments per tract (team-wide), for "Color the map by: Appointments".
+  const APPT_BREAKS = [1, 2, 4, 7];
+  let apptCount = new Map();
+  const countAppts = () => { apptCount = new Map(); for (const a of K.appts()) if (a.tract) apptCount.set(a.tract, (apptCount.get(a.tract) || 0) + 1); };
+  const apptColor = (n) => (n ? COLORS[APPT_BREAKS.filter((b) => n >= b).length] : '#e5e7eb');
+  const fillFor = (p) => (state.colorBy === 'oil' ? oilColor(oilOf(p)) : state.colorBy === 'appts' ? apptColor(apptCount.get(p.geoid) || 0) : colorFor(p.score));
   const homeLabel = (k) => (TG.home_age_bands.find((b) => b.key === k) || {}).label || '';
   // Walk list: the house-level targets (home age, house size) filter each lot by its own facts.
   const lotPasses = (r) => (!state.homes.size || state.homes.has(r.age)) && (!state.sizes.size || state.sizes.has(r.size)) && (!walk.oilOnly || r.fuel === 'oil');
@@ -373,7 +385,7 @@
   const uuid = () => (crypto.randomUUID ? crypto.randomUUID()
     : ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, (c) => (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)));
   const K = window.TurfTeam ? window.TurfTeam.createTeam({ supabase: appCfg && appCfg.supabase, storage, fetch: window.fetch.bind(window), uuid, noteMax: appCfg && appCfg.note_max, tagMax: appCfg && appCfg.tag_max })
-    : { enabled: false, signedIn: () => false, me: () => null, latest: () => null, turf: () => null, allTurf: () => new Map(), notesFor: () => [], tagsFor: () => [], houseNotesInTract: () => [], pins: () => [], pendingCount: () => 0, onChange: () => {} };
+    : { enabled: false, signedIn: () => false, me: () => null, latest: () => null, turf: () => null, allTurf: () => new Map(), notesFor: () => [], tagsFor: () => [], appts: () => [], apptsIn: () => [], houseNotesInTract: () => [], pins: () => [], pendingCount: () => 0, onChange: () => {} };
   const REPCOLOR = Object.fromEntries(((appCfg && appCfg.reps) || []).map((r) => [r.name, r.color]));
   const repColor = (name) => REPCOLOR[name] || '#374151';
   const TURF = Object.fromEntries(((appCfg && appCfg.turf_statuses) || []).map((x) => [x.key, x]));
@@ -453,15 +465,21 @@
         L.marker(c, { interactive: false, icon: L.divIcon({ className: '', html: `<span class="rep-label" style="background:${t.status === 'avoid' ? '#111827' : repColor(t.rep)}">${esc(label)}</span>`, iconSize: null }) }).addTo(overlay);
       }
     }
+    for (const a of K.appts()) {
+      const m = L.marker([a.lat, a.lon], { icon: L.divIcon({ className: '', html: `<span class="appt-pin" style="border-color:${repColor(a.rep)}">📅</span>`, iconSize: [34, 34], iconAnchor: [17, 17] }), zIndexOffset: 500 });
+      m.on('click', (e) => { L.DomEvent.stopPropagation(e); if (placingPin) { placingPin = false; openPinEditor(e.latlng.lat, e.latlng.lng); return; } openAppt(a); });
+      m.addTo(overlay);
+    }
     for (const n of K.pins()) {
       const m = L.circleMarker([n.lat, n.lon], { radius: 9, weight: 3, color: '#ffffff', fillColor: repColor(n.rep), fillOpacity: 1 });
-      m.on('click', (e) => { L.DomEvent.stopPropagation(e); openPin(n); });
+      m.on('click', (e) => { L.DomEvent.stopPropagation(e); if (placingPin) { placingPin = false; openPinEditor(e.latlng.lat, e.latlng.lng); return; } openPin(n); });
       m.addTo(overlay);
     }
   }
   map.on('zoomend', () => drawOverlay());
 
   function render() {
+    countAppts();
     if (layer) layer.remove();
     layer = L.geoJSON(data, {
       filter: (f) => passes(f.properties),
@@ -571,7 +589,10 @@
         <input type="date" id="planPick" min="${addDays(0)}" aria-label="Pick a date">
       </div>
       ${sv ? '<button class="btn ghost" id="unsaveBtn">Remove from saved</button>' : ''}</div>`;
-    box.innerHTML = `<h4>${sv ? 'Saved turf' : '☆ Save turf'}</h4>${saveHtml}<h4>Turf</h4><div>${who}</div>
+    const ap = K.apptsIn(p.geoid);
+    const byRep = ap.reduce((m, a) => ((m[a.rep] = (m[a.rep] || 0) + 1), m), {});
+    const apptLine = `<div class="meta" style="margin-bottom:10px">📅 <b>${ap.length}</b> appointment${ap.length === 1 ? '' : 's'} booked here${ap.length ? ` (${Object.entries(byRep).map(([r, n]) => `${esc(r)} ${n}`).join(', ')})` : ''}</div>`;
+    box.innerHTML = `${apptLine}<h4>${sv ? 'Saved turf' : '☆ Save turf'}</h4>${saveHtml}<h4>Turf</h4><div>${who}</div>
       <div class="turfrow">${Object.values(TURF).map((x) => `<button data-turf="${esc(x.key)}" class="${cur === x.key ? 'cur' : ''}" title="${esc(x.hint)}">${esc(x.key === 'claimed' && (!t || t.rep !== me.name || cur !== 'claimed') ? 'Claim' : x.label)}</button>`).join('')}</div>
       ${t && (t.mine || me.is_admin) ? '<button class="btn ghost" id="turfUndo">Undo last area change</button>' : ''}`;
     box.querySelectorAll('[data-turf]').forEach((b) => (b.onclick = () => {
@@ -811,11 +832,13 @@
 
   // Team-wide: who has which turf, and the pins. Redraw the map only when that changes.
   let teamSig = '';
+  // Anything that changes what the map draws: turf, pins, appointments.
+  const teamSignature = () => [...K.allTurf().values()].map((t) => t.tract + t.status + t.rep).join() + '|' + K.pins().map((n) => n.client_id).join() + '|' + K.appts().map((a) => a.client_id).join();
   function syncTeam() {
     if (!canKnock()) return;
     K.loadSaved().then(() => { paintAcct(); paintSaved(); }).catch(() => { /* offline */ });
     K.loadTeam().then(() => {
-      const sig = [...K.allTurf().values()].map((t) => t.tract + t.status + t.rep).join() + '|' + K.pins().map((n) => n.client_id).join();
+      const sig = teamSignature();
       if (sig !== teamSig) { teamSig = sig; render(); }
     }).catch(() => { /* offline */ });
   }
@@ -1018,6 +1041,7 @@
   // ---------- Pins: notes dropped on the map ----------
   function tractAtPoint(lat, lon) { const f = typeof tractAt === 'function' ? tractAt(lon, lat) : null; return f ? f.properties.geoid : null; }
   function openPinEditor(lat, lon) {
+    if (pinKind === 'appt') { openApptEditor({ lat, lon }); return; }
     const body = document.getElementById('noteBody');
     const g = tractAtPoint(lat, lon);
     body.innerHTML = `<div class="title">New pin</div>
@@ -1042,17 +1066,65 @@
     document.getElementById('pinClose').onclick = closeAll;
     document.getElementById('noteSheet').classList.add('open');
   }
+  // ---------- Appointments: pinned on the map for the whole team ----------
+  const fmtAppt = (iso) => (iso ? new Date(iso).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'No time set');
+  const localNow = () => { const d = new Date(Date.now() - new Date().getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16); };
+  // where = { tract, bbl, address, lat, lon }; after() runs once it's saved or skipped.
+  function openApptEditor(where, after) {
+    const body = document.getElementById('noteBody');
+    const g = where.tract || tractAtPoint(where.lat, where.lon);
+    body.innerHTML = `<div class="title">📅 Pin appointment</div>
+      <div class="meta">${where.address ? `${esc(where.address)} · ` : ''}${g ? `tract ${esc(g.slice(5))}` : 'outside the scored tracts'} · the whole team will see it</div>
+      <label class="field" style="margin-top:10px">When (optional)<input class="when" type="datetime-local" id="apptWhen" min="${localNow()}"></label>
+      <textarea class="note" id="apptNote" maxlength="${NOTE_MAX}" placeholder="Note for the team, e.g. “Quote for 3 heads, oil boiler” — no names or phone numbers"></textarea>
+      <div class="err" id="apptErr"></div>
+      <button class="btn" id="apptSave">Save appointment</button>
+      <button class="btn ghost" id="apptSkip">${after ? 'Skip' : 'Cancel'}</button>`;
+    const done = () => { closeAll(); drawOverlay(); if (after) after(); };
+    document.getElementById('apptSave').onclick = () => {
+      const when = document.getElementById('apptWhen').value;
+      try {
+        K.addAppt({ ...where, tract: g, appt_at: when ? new Date(when).toISOString() : null, note: document.getElementById('apptNote').value });
+        toast(`📅 Appointment pinned${when ? ` · ${fmtAppt(new Date(when).toISOString())}` : ''}`);
+        render(); done();
+      } catch (ex) { document.getElementById('apptErr').textContent = ex.message; }
+    };
+    document.getElementById('apptSkip').onclick = done;
+    document.getElementById('noteSheet').classList.add('open');
+  }
+  function openAppt(a) {
+    const body = document.getElementById('noteBody');
+    const me = K.me();
+    body.innerHTML = `<div class="title">📅 ${esc(fmtAppt(a.appt_at))}</div>
+      <div class="meta">${a.address ? `${esc(a.address)} · ` : ''}booked by <b style="color:${repColor(a.rep)}">${esc(a.rep || '')}</b> · ${esc(fmtWhen(a.created_at))}${a.pending ? ' · waiting to sync' : ''}${a.failed ? ' · NOT SAVED' : ''}</div>
+      ${a.note ? `<div class="note-item" style="font-size:16px;margin-top:8px">${esc(a.note)}</div>` : ''}
+      <a class="btn ghost" style="text-align:center;text-decoration:none" href="https://maps.apple.com/?daddr=${a.lat},${a.lon}&dirflg=w" target="_blank" rel="noopener">Walk here</a>
+      ${a.mine || (me && me.is_admin) ? '<button class="btn ghost" id="apptDel">Delete appointment</button>' : ''}
+      <button class="btn ghost" id="apptClose">Close</button>`;
+    const del = document.getElementById('apptDel');
+    if (del) del.onclick = async () => { try { await K.deleteAppt(a.client_id); closeAll(); render(); drawOverlay(); toast('Appointment deleted'); } catch (ex) { toast(`Couldn't delete: ${ex.message}`); } };
+    document.getElementById('apptClose').onclick = closeAll;
+    document.getElementById('noteSheet').classList.add('open');
+  }
+
+  let pinKind = 'note';
   function startPin() {
     if (!canKnock()) { openAcct(); return; }
     const body = document.getElementById('noteBody');
     body.innerHTML = `<div class="title">Drop a pin</div>
-      <div class="meta">A note on the map the whole team can see.</div>
+      <div class="seg" id="pinKind" style="margin:8px 0"><button data-k="note" class="${pinKind === 'note' ? 'on' : ''}">📝 Note</button><button data-k="appt" class="${pinKind === 'appt' ? 'on' : ''}">📅 Appointment</button></div>
+      <div class="meta" id="pinKindHint">${pinKind === 'appt' ? 'An appointment on the map the whole team can see.' : 'A note on the map the whole team can see.'}</div>
       ${loc.last ? '<button class="btn" id="pinHere">At my location</button>' : ''}
       <button class="btn ${loc.last ? 'ghost' : ''}" id="pinTap">Tap a spot on the map</button>
       <button class="btn ghost" id="pinCancel">Cancel</button>`;
+    body.querySelectorAll('#pinKind button').forEach((b) => (b.onclick = () => {
+      pinKind = b.dataset.k;
+      body.querySelectorAll('#pinKind button').forEach((x) => x.classList.toggle('on', x === b));
+      document.getElementById('pinKindHint').textContent = pinKind === 'appt' ? 'An appointment on the map the whole team can see.' : 'A note on the map the whole team can see.';
+    }));
     const here = document.getElementById('pinHere');
     if (here) here.onclick = () => openPinEditor(loc.last[0], loc.last[1]);
-    document.getElementById('pinTap').onclick = () => { closeAll(); placingPin = true; toast('Tap the map where the pin goes'); };
+    document.getElementById('pinTap').onclick = () => { closeAll(); placingPin = true; toast(pinKind === 'appt' ? 'Tap the map where the appointment is' : 'Tap the map where the pin goes'); };
     document.getElementById('pinCancel').onclick = closeAll;
     document.getElementById('noteSheet').classList.add('open');
   }
@@ -1067,6 +1139,7 @@
   function paintAcct() {
     const on = K.enabled && K.signedIn() && !!K.me();
     document.getElementById('mineBtn').style.display = on ? '' : 'none';
+    const cab = document.getElementById('colorAppts'); if (cab) cab.style.display = on ? '' : 'none';
     const sb = document.getElementById('savedBtn');
     sb.style.display = on ? '' : 'none';
     if (on) { const n = K.mySaved().length; sb.textContent = n ? `★ Saved · ${n}` : '★ Saved'; }
@@ -1125,6 +1198,8 @@
         ${n ? '<button class="btn" id="acctSync">Sync now</button>' : ''}
         <div class="section"><h4>My turf</h4><div id="myTurf" class="mine-list"></div></div>
         <div class="section"><h4>My come-backs &amp; interested</h4><div id="myFollow" class="mine-list meta">Loading…</div></div>
+        <div class="section"><h4>📅 Appointments</h4><div id="apptList" class="mine-list"></div></div>
+        <div class="section"><h4>Where the team books most</h4><div id="apptTop" class="mine-list"></div></div>
         <div class="section"><h4>Team today</h4><div id="scoreBox" class="meta">Loading…</div></div>
         <button class="btn ghost" id="acctOut">Sign out</button>
         <button class="btn ghost" id="acctClose">Close</button>${tip}`;
@@ -1144,6 +1219,19 @@
         el.querySelectorAll('[data-go]').forEach((x) => (x.onclick = () => goTract(x.dataset.go)));
       }).catch(() => { const el = document.getElementById('myFollow'); if (el) el.textContent = 'Offline — shows when you have signal.'; });
       document.querySelectorAll('#myTurf [data-go]').forEach((x) => (x.onclick = () => goTract(x.dataset.go)));
+      const all = K.appts();
+      const upcoming = all.filter((a) => !a.appt_at || Date.parse(a.appt_at) >= Date.now() - 3600000).slice(0, 15);
+      document.getElementById('apptList').innerHTML = upcoming.length ? upcoming.map((a) => `<div class="item" data-appt="${esc(a.client_id)}"><div class="a">${esc(fmtAppt(a.appt_at))} · ${esc(a.address || (a.tract ? `tract ${a.tract.slice(5)}` : 'map pin'))}<small><b style="color:${repColor(a.rep)}">${esc(a.rep || '')}</b>${a.note ? ` · ${esc(a.note.slice(0, 60))}` : ''}</small></div></div>`).join('')
+        : '<div class="meta">No upcoming appointments. Tap <b>Booked</b> on a house to pin one.</div>';
+      document.querySelectorAll('#apptList [data-appt]').forEach((x) => (x.onclick = () => { const a = all.find((y) => y.client_id === x.dataset.appt); if (!a) return; closeAll(); map.setView([a.lat, a.lon], 17); openAppt(a); }));
+      const top = Object.entries(all.reduce((m, a) => (a.tract ? ((m[a.tract] = (m[a.tract] || 0) + 1), m) : m), {})).sort((x, y) => y[1] - x[1]).slice(0, 5);
+      document.getElementById('apptTop').innerHTML = top.length ? top.map(([g, n]) => { const f = featBy(g); const pp = f ? f.properties : null;
+        return `<div class="item" data-go="${esc(g)}"><div class="a">${pp ? `${esc(pp.county_name)} · tract ${esc(g.slice(5))}` : esc(g)}<small>📅 ${n} appointment${n === 1 ? '' : 's'}${pp ? ` · score ${pp.score}` : ''}</small></div></div>`; }).join('')
+        + '<button class="btn ghost" id="apptColor">Color the map by appointments</button>'
+        : '<div class="meta">Shows up once the team pins appointments.</div>';
+      document.querySelectorAll('#apptTop [data-go]').forEach((x) => (x.onclick = () => goTract(x.dataset.go)));
+      const ac = document.getElementById('apptColor');
+      if (ac) ac.onclick = () => { state.colorBy = 'appts'; closeAll(); paintTarget(); render(); toast('Map colored by team appointments'); };
       K.repStats().then((rows) => {
         const box = document.getElementById('scoreBox'); if (!box) return;
         box.outerHTML = `<table class="score-table"><tr><th>Rep</th><th class="n">Knocks</th><th class="n">Booked</th><th class="n">Turf</th><th class="n">All-time booked</th></tr>
@@ -1201,6 +1289,7 @@
           <div class="fchips">${Object.entries(FOLLOW).map(([key, label]) => `<button class="chip" data-f="${esc(key)}">${esc(label)}</button>`).join('')}</div>
           <button class="btn" id="fSave">Save come back</button>
         </div>
+        ${r.lat != null ? '<button class="btn ghost" id="kAppt">📅 Pin appointment</button>' : ''}
         ${canUndo ? '<button class="btn ghost" id="kUndo">Undo last knock</button>' : ''}
         <div class="section" id="houseNotes"><h4>House notes</h4>${noteList(K.notesFor({ bbl: r.bbl }), 'No notes on this house yet.')}${noteBox('For the team, e.g. “Big dog — use side gate” — no names or phone numbers')}</div>
         <button class="btn ghost" id="kClose">Close</button>`;
@@ -1210,6 +1299,8 @@
           K.record(r.bbl, walk.geoid, status, followup, r.address);
           closeAll();
           toast(`${STATUS[status].label} · ${r.address}`, () => K.undo(r.bbl));
+          // Booked: pin the appointment for the team right away (Skip is one tap).
+          if (status === 'booked' && r.lat != null) openApptEditor({ tract: walk.geoid, bbl: r.bbl, address: r.address, lat: r.lat, lon: r.lon });
         } catch (ex) { toast(ex.message); }
       };
       body.querySelectorAll('[data-st]').forEach((b) => (b.onclick = () => {
@@ -1226,6 +1317,8 @@
       }));
       document.getElementById('fSave').onclick = () => save('come_back', follow);
       wireNotes(document.getElementById('houseNotes'), () => ({ tract: walk.geoid, bbl: r.bbl, address: r.address }), () => openKnock(r));
+      const ka = document.getElementById('kAppt');
+      if (ka) ka.onclick = () => openApptEditor({ tract: walk.geoid, bbl: r.bbl, address: r.address, lat: r.lat, lon: r.lon });
       if (canUndo) document.getElementById('kUndo').onclick = async () => {
         try { await K.undo(r.bbl); closeAll(); toast('Knock removed'); } catch (ex) { toast(`Couldn't undo: ${ex.message}`); }
       };
@@ -1262,7 +1355,7 @@
       const ta = document.querySelector('#areaNotes textarea.note');
       if (!ta || (!ta.value && document.activeElement !== ta)) paintTractTeam(cardOpen);
     }
-    const sig = [...K.allTurf().values()].map((t) => t.tract + t.status + t.rep).join() + '|' + K.pins().map((n) => n.client_id).join();
+    const sig = teamSignature();
     if (sig !== teamSig) { teamSig = sig; render(); }
     if (redrawQueued) return;
     redrawQueued = true;

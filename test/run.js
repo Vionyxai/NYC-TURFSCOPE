@@ -732,6 +732,29 @@ await at('area tags: shared with names, one-tap or typed, no duplicates, remove 
   await matt.loadTract(TR);
   assert.deepEqual([...matt.tagsFor(TR).map((x) => x.label)], ['Bring a Creole speaker']);
 });
+await at('appointments: pinned for the team with time and note, no phone numbers, offline, remove own (admin any)', async () => {
+  const sb = makeTeam();
+  const matt = app(sb, memoryStorage()); await matt.signIn('matt@x.com', 'pw-matt');
+  assert.throws(() => matt.addAppt({ tract: TR, lat: 40.687, lon: -73.807, note: 'her cell 718-555-1234' }), /phone numbers in appointment notes/);
+  assert.throws(() => matt.addAppt({ tract: TR, note: 'no spot' }), /where the appointment is/);
+  sb.state.offline = true;
+  const soon = new Date(clock + 86400000).toISOString(), later = new Date(clock + 3 * 86400000).toISOString();
+  matt.addAppt({ tract: TR, bbl: '4012345678', address: '138-04 109 AVENUE', lat: 40.6871, lon: -73.8072, appt_at: later, note: 'Quote for 3 heads' });
+  matt.addAppt({ tract: TR, lat: 40.688, lon: -73.806, appt_at: soon });
+  assert.equal(matt.appts().length, 2);
+  assert.equal(matt.appts()[0].appt_at, soon);                                  // soonest first
+  assert.equal(matt.appts()[0].pending, true);
+  sb.state.offline = false; await matt.flush();
+  assert.equal(sb.tables.appointments.length, 2);
+  const gio = app(sb, memoryStorage()); await gio.signIn('gio@x.com', 'pw-gio');
+  await gio.loadTeam();
+  assert.equal(gio.apptsIn(TR).length, 2);
+  assert.equal(gio.apptsIn(TR).find((a) => a.bbl).note, 'Quote for 3 heads');
+  assert.equal(gio.apptsIn(TR)[0].rep, 'Matt');
+  await gio.deleteAppt(gio.appts()[0].client_id);                                 // admin can remove anyone's
+  await matt.loadTeam();
+  assert.equal(matt.appts().length, 1);
+});
 await at('mixed offline queue (knock, claim, note) syncs in order after a reload', async () => {
   const sb = makeTeam(); const storage = memoryStorage();
   const k = app(sb, storage); await k.signIn('matt@x.com', 'pw-matt');

@@ -1,4 +1,4 @@
-// TurfScope team sync: login, house knocks, turf claims, notes, pins and area tags, all offline-first.
+// TurfScope team sync: login, house knocks, turf claims, notes, pins, area tags and appointments, all offline-first.
 // Talks to Supabase with plain fetch (no library). Plain script: defines window.TurfTeam.
 // Everything the outside world touches (fetch, storage, clock) is passed in, so npm test
 // can run this file against a fake Supabase without a browser.
@@ -18,7 +18,7 @@
   }
 
   // Where each kind of entry is stored in the database.
-  const TABLE = { knock: 'knocks', turf: 'turf_log', note: 'notes', saved: 'saved_turfs', tag: 'area_tags' };
+  const TABLE = { knock: 'knocks', turf: 'turf_log', note: 'notes', saved: 'saved_turfs', tag: 'area_tags', appt: 'appointments' };
 
   function createTeam(opts) {
     const sb = opts.supabase;                 // { url, key } or null when not set up
@@ -34,6 +34,7 @@
     const turfBy = new Map();                 // tract -> latest area status
     const notes = new Map();                  // client_id -> note / pin
     const tags = new Map();                   // client_id -> area tag { tract, label, rep, tagged_at }
+    const appts = new Map();                  // client_id -> appointment { tract, bbl, address, lat, lon, appt_at, note, rep, created_at }
     const K2 = { saved: 'ts.saved', activity: 'ts.activity' };
     let teamSaved = [];                       // everyone's saved turfs: { tract, plan_date, saved_at, rep, client_id }
     let activity = {};                        // tract -> { knocked, notes, pins, turf_status, turf_rep, last_at, last_rep }
@@ -57,6 +58,7 @@
       if (q.kind === 'turf') turfBy.set(q.row.tract, { ...q.row, ...mine });
       if (q.kind === 'note') notes.set(q.row.client_id, { ...q.row, ...mine });
       if (q.kind === 'tag') tags.set(q.row.client_id, { ...q.row, ...mine });
+      if (q.kind === 'appt') appts.set(q.row.client_id, { ...q.row, ...mine });
       if (q.kind === 'saved') {
         teamSaved = teamSaved.filter((x) => !(x.tract === q.row.tract && me && x.rep === me.name));
         teamSaved.push({ ...q.row, ...mine });
@@ -147,7 +149,7 @@
     async function signOut() {
       if (queue.length) throw new Error(`${queue.length} change(s) haven't synced yet. Get signal, tap Sync now, then sign out.`);
       try { if (session) await call('/auth/v1/logout', { method: 'POST' }); } catch (e) { /* offline is fine */ }
-      session = null; me = null; byBbl.clear(); turfBy.clear(); notes.clear(); tags.clear(); teamSaved = []; activity = {};
+      session = null; me = null; byBbl.clear(); turfBy.clear(); notes.clear(); tags.clear(); appts.clear(); teamSaved = []; activity = {};
       write(K.session, null); write(K.me, null); write(K2.saved, null); write(K2.activity, null);
       emit();
     }
@@ -171,6 +173,7 @@
       if (q.kind === 'turf') upd(turfBy, q.row.tract);
       if (q.kind === 'note') upd(notes, q.row.client_id);
       if (q.kind === 'tag') upd(tags, q.row.client_id);
+      if (q.kind === 'appt') upd(appts, q.row.client_id);
       if (q.kind === 'saved') teamSaved = teamSaved.map((x) => (x.client_id === q.row.client_id ? { ...x, pending: false, failed: failed || undefined } : x));
     }
 
@@ -286,6 +289,35 @@
     const tagsFor = (tract) => [...tags.values()].filter((x) => x.tract === String(tract))
       .sort((a, b) => (a.tagged_at < b.tagged_at ? -1 : 1));
 
+    // ---------- Appointments ----------
+    // A booked appointment, pinned where it is, for the whole team. The note is optional and
+    // follows the same rule as notes (no phone numbers or emails).
+    function addAppt({ tract, bbl, address, lat, lon, appt_at, note }) {
+      if (lat == null || lon == null) throw new Error('Pick where the appointment is first.');
+      const n = note == null ? '' : String(note).trim();
+      if (n) { const problem = noteProblem(n, noteMax); if (problem) throw new Error(problem.replace('in notes', 'in appointment notes')); }
+      return enqueue('appt', {
+        tract: tract ? String(tract) : null, bbl: bbl ? String(bbl) : null,
+        address: address ? String(address).slice(0, 100) : null,
+        lat: Math.round(lat * 1e6) / 1e6, lon: Math.round(lon * 1e6) / 1e6,
+        appt_at: appt_at || null, note: n || null, created_at: iso(),
+      });
+    }
+    async function deleteAppt(clientId) {
+      await remove('appt', clientId);
+      appts.delete(clientId);
+      emit();
+    }
+    // Upcoming first (soonest), then ones with no time, then past ones (most recent first).
+    const apptOrder = (a, b) => {
+      const t = now(), ka = a.appt_at ? Date.parse(a.appt_at) : null, kb = b.appt_at ? Date.parse(b.appt_at) : null;
+      const rank = (k) => (k == null ? 1 : k >= t ? 0 : 2);
+      if (rank(ka) !== rank(kb)) return rank(ka) - rank(kb);
+      if (ka == null) return a.created_at < b.created_at ? 1 : -1;
+      return rank(ka) === 0 ? ka - kb : kb - ka;
+    };
+    const allAppts = () => [...appts.values()].sort(apptOrder);
+
     // ---------- Loading the team's data ----------
     const pendingKeys = (kind, key) => new Set(queue.filter((q) => q.kind === kind).map((q) => q.row[key]));
 
@@ -311,12 +343,19 @@
       return rows ? rows.length : 0;
     }
 
-    // Team-wide: who has which turf, and every pin on the map.
+    // Team-wide: who has which turf, every pin and every appointment on the map.
     async function loadTeam() {
-      const [turf, ps] = await Promise.all([
+      const [turf, ps, as] = await Promise.all([
         call('/rest/v1/turf_status?select=tract,status,set_at,client_id,rep'),
         call('/rest/v1/team_notes?lat=not.is.null&select=client_id,tract,bbl,address,lat,lon,body,noted_at,rep&order=noted_at.desc&limit=2000'),
+        call('/rest/v1/team_appointments?select=client_id,tract,bbl,address,lat,lon,appt_at,note,created_at,rep&order=created_at.desc&limit=5000')
+          .catch((e) => (e.status === 404 ? null : Promise.reject(e))),   // 404 until 006 is run
       ]);
+      if (as) {
+        const pendAppts = pendingKeys('appt', 'client_id');
+        for (const id of [...appts.keys()]) if (!pendAppts.has(id)) appts.delete(id);
+        for (const a of as) appts.set(a.client_id, { ...a, mine: !!me && a.rep === me.name });
+      }
       const pend = pendingKeys('turf', 'tract');
       for (const t of [...turfBy.keys()]) if (!pend.has(t)) turfBy.delete(t);
       for (const t of turf || []) if (!pend.has(t.tract)) turfBy.set(t.tract, { ...t, mine: !!me && t.rep === me.name });
@@ -383,7 +422,8 @@
     return {
       enabled: !!sb,
       signIn, signOut, loadMe, flush,
-      record, undo, setTurf, undoTurf, addNote, deleteNote, addTag, deleteTag, tagsFor,
+      record, undo, setTurf, undoTurf, addNote, deleteNote, addTag, deleteTag, tagsFor, addAppt, deleteAppt,
+      appts: allAppts, apptsIn: (tract) => allAppts().filter((a) => a.tract === String(tract)),
       loadTract, loadTeam, tractProgress, repStats, myFollowups,
       saveTurf, unsaveTurf, loadSaved, turfStage,
       mySaved: () => teamSaved.filter((x) => me && x.rep === me.name),

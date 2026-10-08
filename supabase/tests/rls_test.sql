@@ -212,6 +212,31 @@ set role anon;
 select pg_temp.fails('select 1 from team_tags', 'anon read tags');
 reset role;
 
+-- Appointments: team sees them with names; book only as yourself; remove own (admin any); no phone/email; LI parcel IDs ok
+select pg_temp.as_user('matt@x.com');
+insert into appointments (client_id, tract, bbl, address, lat, lon, appt_at, note)
+  values ('b2b2b2b2-0000-0000-0000-000000000001', '36081019400', '4012345678', '138-04 109 AVENUE', 40.6871, -73.8072, now() + interval '2 days', 'Wants a quote for 3 heads');
+insert into appointments (client_id, tract, bbl, address, lat, lon)
+  values ('b2b2b2b2-0000-0000-0000-000000000002', '36103158506', '472089 0100-012.000-0001-005.000', '57 SUNSET AV', 40.6884, -73.4251);
+select pg_temp.fails($q$insert into appointments (client_id, lat, lon, rep_id) values (gen_random_uuid(), 40.7, -73.8, (select id from reps where name = 'Issac'))$q$, 'appointment as someone else');
+select pg_temp.fails($q$insert into appointments (client_id, lat, lon, note) values (gen_random_uuid(), 40.7, -73.8, 'call her 516 555 1234')$q$, 'phone in appointment note');
+select pg_temp.fails($q$insert into appointments (client_id, lat, lon) values (gen_random_uuid(), 10, 10)$q$, 'appointment far outside NY');
+reset role;
+select pg_temp.as_user('issac@x.com');
+delete from appointments;                                                    -- not his: RLS removes 0 rows
+do $$ begin
+  assert (select count(*) from team_appointments where rep = 'Matt') = 2, 'Issac sees Matt''s appointments and cannot remove them';
+  assert (select note from team_appointments where bbl = '4012345678') = 'Wants a quote for 3 heads', 'note visible to the team';
+end $$;
+reset role;
+select pg_temp.as_user('gio@x.com');
+delete from appointments where client_id = 'b2b2b2b2-0000-0000-0000-000000000002';   -- admin may
+do $$ begin assert (select count(*) from team_appointments) = 1, 'admin removed an appointment'; end $$;
+reset role;
+set role anon;
+select pg_temp.fails('select 1 from team_appointments', 'anon read appointments');
+reset role;
+
 -- Someone leaves the team
 update reps set active = false where name = 'Matt';
 select pg_temp.as_user('matt@x.com');
@@ -219,4 +244,4 @@ do $$ begin assert (select count(*) from knocks) = 0, 'inactive rep locked out';
 reset role;
 
 \o
-\echo RLS tests passed: 4 active reps (Cody out, Kai in); logged-out/stranger blocked; knocks, turf and notes posted only as yourself; anyone can change any status; no edits; retries safe; undo own; admin override; no phone/email in notes or tags; area tags shared; inactive locked out
+\echo RLS tests passed: 4 active reps (Cody out, Kai in); logged-out/stranger blocked; knocks, turf and notes posted only as yourself; anyone can change any status; no edits; retries safe; undo own; admin override; no phone/email in notes or tags; area tags and appointments shared; inactive locked out
