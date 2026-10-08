@@ -41,5 +41,5 @@ for (const t of ['reps', 'knocks', 'turf_log', 'notes', 'latest_knocks', 'turf_s
   else if (code === 'PGRST205' || code === '42P01' || r.status === 404) bad(`${t}: not found. Run ${file} in the SQL Editor`);
   else bad(`${t}: unexpected answer HTTP ${r.status} ${JSON.stringify(r.body)}`);
 }
-console.log(problems ? `\n${problems} thing(s) to fix: see supabase/README.md` : '\nAll good: Supabase is ready. Next: create the 4 logins and link their emails (README steps 3–4).');
+console.log(problems ? `\n${problems} thing(s) to fix: see supabase/README.md` : '\nAll good: Supabase is ready. Every table and view exists and is locked to signed-in reps. (New rep? Create their login and link the email: supabase/README.md steps 3–4.)');
 process.exit(problems ? 1 : 0);
