@@ -1,4 +1,4 @@
-# TEMPORARY: reproduce the pasted-address search miss. Removed after use.
+# TEMPORARY: messy pasted addresses → cleanup → real NYS locator. Removed after use.
 name: Probe
 on:
   push:
@@ -8,15 +8,32 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
       - run: |
-          set +e
-          L=https://gisservices.its.ny.gov/arcgis/rest/services/Locators/Street_and_Address_Composite/GeocodeServer/findAddressCandidates
-          E='{"xmin":-74.3,"ymin":40.45,"xmax":-71.8,"ymax":41.2,"spatialReference":{"wkid":4326}}'
-          q() { printf -- "-- %s\n" "$1"; curl -s -G "$L" --data-urlencode "SingleLine=$1" --data-urlencode "outSR=4326" --data-urlencode "maxLocations=5" --data-urlencode "outFields=Score" --data-urlencode "searchExtent=$E" --data-urlencode "f=json" | jq -c '[.candidates[]? | {a: .address, s: .score}]'; }
-          for n in 10 45 120; do
-            q "$n E Maple St Valley Stream, NY  11580 United States"
-            q "$n E Maple St Valley Stream, NY  11580 United States, NY"
-            q "$n E Maple St, Valley Stream, NY 11580"
-            q "$n E Maple St Valley Stream NY 11580"
-            q "$n East Maple St, Valley Stream, NY"
-          done
+          cat > p.mjs <<'JS'
+          import fs from 'node:fs'; import vm from 'node:vm';
+          const ctx = {}; vm.runInNewContext(fs.readFileSync('m3-map/search.js', 'utf8'), { window: ctx });
+          const geo = JSON.parse(fs.readFileSync('config/sources.json', 'utf8')).geocoder;
+          const inputs = [
+            '⁨45 E Maple St⁩\nValley Stream, NY  11580\nUnited States',
+            '45 E Maple St Valley Stream, NY  11580 United States',
+            '33 Court St, Valley Stream, NY 11580, United States',
+            '138–04 109th Ave\nJamaica, NY 11435\nUnited States',
+            '57 Sunset Ave\nWest Babylon NY 11704',
+            '12 Elm St Massapequa',
+          ];
+          for (const raw of inputs) {
+            let hit = null, used = null;
+            for (const text of ctx.TurfSearch.searchVariants(raw)) {
+              const p = new URLSearchParams({ SingleLine: text, outSR: '4326', maxLocations: '5', outFields: 'Score', f: 'json', searchExtent: JSON.stringify(geo.search_extent) });
+              const j = await (await fetch(`${geo.url}?${p}`)).json();
+              const c = (j.candidates || []).filter((c) => c.score >= geo.min_score);
+              if (c.length) { hit = c[0]; used = text; break; }
+            }
+            console.log(JSON.stringify(raw), '→', used ? `"${used}" → ${hit.address} (${hit.score})` : 'NO MATCH');
+          }
+          JS
+          node p.mjs

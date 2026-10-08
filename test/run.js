@@ -154,6 +154,22 @@ t('Suffolk 2024 results: fixed-width BOE file → Harris / Trump / total per dis
   assert.deepEqual({ ...districts.get('0001') }, { dem: 372, rep: 179, total: 553 });   // later races ignored
   assert.deepEqual({ ...districts.get('1235') }, { dem: 230, rep: 624, total: 854 });
 });
+t('address search: pasted addresses cleaned, simpler fallbacks tried', () => {
+  const ctx2 = {};
+  vm.runInNewContext(fs.readFileSync(path.join(ROOT, 'm3-map', 'search.js'), 'utf8'), { window: ctx2 });
+  const { cleanAddress, searchVariants } = ctx2.TurfSearch;
+  // Apple Maps style paste: line breaks, double space, invisible marks, country on the end
+  assert.equal(cleanAddress('\u206845 E Maple St\u2069\nValley Stream, NY\u00A0 11580\nUnited States'), '45 E Maple St, Valley Stream, NY 11580');
+  assert.equal(cleanAddress('33 Court St, Valley Stream, NY 11580, USA'), '33 Court St, Valley Stream, NY 11580');
+  assert.equal(cleanAddress('138\u201304 109 Ave'), '138-04 109 Ave');
+  assert.deepEqual([...searchVariants('45 E Maple St Valley Stream, NY  11580 United States')],
+    ['45 E Maple St Valley Stream, NY 11580', '45 E Maple St Valley Stream, NY', '45 E Maple St Valley Stream, NY']
+      .filter((x, i, a) => a.indexOf(x) === i));
+  assert.deepEqual([...searchVariants('12 Elm St')], ['12 Elm St, NY']);
+  assert.equal(cleanAddress('12 Columbus Ave, Valley Stream, NY US'), '12 Columbus Ave, Valley Stream, NY');
+  assert.equal(cleanAddress('9 Nimbus Rd'), '9 Nimbus Rd');
+  assert.deepEqual([...searchVariants('  ')], []);
+});
 t('PLUTO bct2020 → GEOID', () => {
   assert.equal(plutoTractGeoid('4012300'), '36081012300');
   assert.equal(plutoTractGeoid('4000100.0'), '36081000100');

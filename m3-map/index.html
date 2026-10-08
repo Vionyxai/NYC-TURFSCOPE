@@ -248,6 +248,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="team.js"></script>
+<script src="search.js"></script>
 <script>
 (async function () {
   if (typeof L === 'undefined') { document.getElementById('meta').textContent = 'Map failed to load — check your connection and refresh'; return; }
@@ -803,25 +804,31 @@
   }
   async function runSearch(e) {
     e.preventDefault();
-    const q = document.getElementById('searchInput').value.trim();
+    const raw = document.getElementById('searchInput').value;
+    const tries = window.TurfSearch ? window.TurfSearch.searchVariants(raw) : [raw.trim()];
+    const q = tries[0] || '';
     const err = document.getElementById('searchErr'), out = document.getElementById('searchResults');
     err.textContent = ''; out.innerHTML = '';
     if (!GEO) { err.textContent = 'Search isn’t set up.'; return; }
     if (q.length < 4) { err.textContent = 'Type a house number and street.'; return; }
     out.innerHTML = '<div class="meta">Searching…</div>';
-    const params = new URLSearchParams({ SingleLine: /\bNY\b/i.test(q) ? q : `${q}, NY`, outSR: '4326', maxLocations: String(GEO.max_results || 5), outFields: 'Score', f: 'json' });
-    if (GEO.search_extent) params.set('searchExtent', JSON.stringify(GEO.search_extent));   // lon/lat box with spatialReference 4326
-    let cands;
+    // Try the cleaned address, then simpler versions, until the locator finds something.
+    let cands = [];
     try {
-      const j = await fetch(`${GEO.url}?${params}`).then((r) => r.json());
-      cands = (j.candidates || []).filter((c) => c.score >= (GEO.min_score || 80) && c.location);
+      for (const text of tries) {
+        const params = new URLSearchParams({ SingleLine: text, outSR: '4326', maxLocations: String(GEO.max_results || 5), outFields: 'Score', f: 'json' });
+        if (GEO.search_extent) params.set('searchExtent', JSON.stringify(GEO.search_extent));   // lon/lat box with spatialReference 4326
+        const j = await fetch(`${GEO.url}?${params}`).then((r) => r.json());
+        cands = (j.candidates || []).filter((c) => c.score >= (GEO.min_score || 80) && c.location);
+        if (cands.length) break;
+      }
     } catch (ex) { out.innerHTML = ''; err.textContent = 'No signal: address search needs internet.'; return; }
     const seen = new Set();
     // Same house listed twice (same name, or village vs town name at the same spot): keep the best-scored one.
     cands.sort((x, y) => y.score - x.score);
     cands = cands.filter((c) => { const k = c.address.toLowerCase(), at = `${c.location.x.toFixed(4)},${c.location.y.toFixed(4)}`;
       if (seen.has(k) || seen.has(at)) return false; seen.add(k); seen.add(at); return true; });
-    if (!cands.length) { out.innerHTML = ''; err.textContent = 'No match. Try adding the town or ZIP (e.g. “12 Elm St, Massapequa”).'; return; }
+    if (!cands.length) { out.innerHTML = ''; err.textContent = `No match for “${q}”. Check the house number and street (e.g. “12 Elm St, Massapequa”).`; return; }
     if (cands.length === 1 || cands[0].score === 100 && cands[1].score < 100) { out.innerHTML = ''; goToHit(cands[0]); return; }
     out.innerHTML = cands.map((c, i) => { const f = tractAt(c.location.x, c.location.y);
       return `<button class="sres" data-i="${i}">${esc(c.address)}<small>${f ? `${esc(f.properties.county_name)} · tract ${esc(f.properties.geoid.slice(5))}` : 'outside the turf area'}</small></button>`; }).join('');
