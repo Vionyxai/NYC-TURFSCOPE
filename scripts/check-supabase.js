@@ -42,5 +42,13 @@ for (const t of ['reps', 'knocks', 'turf_log', 'notes', 'latest_knocks', 'turf_s
   else if (code === 'PGRST205' || code === '42P01' || r.status === 404) bad(`${t}: not found. Run ${file} in the SQL Editor`);
   else bad(`${t}: unexpected answer HTTP ${r.status} ${JSON.stringify(r.body)}`);
 }
+// Columns the app reads that later files add to existing views (a view can exist but be the old version).
+for (const [view, cols, file] of [['team_appointments', 'status,status_at,status_rep,when_at', '007_appointment_outcomes.sql']]) {
+  const r = await get(`/rest/v1/${view}?select=${cols}&limit=1`);
+  const code = r.body && r.body.code;
+  if (code === '42703' || code === 'PGRST204' || (r.status === 400 && /column/i.test(JSON.stringify(r.body)))) bad(`${view}: missing ${cols}. Run supabase/${file} in the SQL Editor`);
+  else if (r.status === 200) bad(`${view}: readable while logged out: SECURITY PROBLEM`);
+  else ok(`${view}: has ${cols.split(',').join(', ')}`);
+}
 console.log(problems ? `\n${problems} thing(s) to fix: see supabase/README.md` : '\nAll good: Supabase is ready. Every table and view exists and is locked to signed-in reps. (New rep? Create their login and link the email: supabase/README.md steps 3–4.)');
 process.exit(problems ? 1 : 0);
