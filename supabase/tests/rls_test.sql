@@ -229,6 +229,30 @@ do $$ begin
   assert (select note from team_appointments where bbl = '4012345678') = 'Wants a quote for 3 heads', 'note visible to the team';
 end $$;
 reset role;
+-- Appointment outcomes: anyone on the team can update any appointment (stamped with them); newest wins;
+-- delayed carries a new time; undo own (admin any); history kept; no phone/email in update notes
+select pg_temp.as_user('issac@x.com');
+insert into appointment_updates (client_id, appt, status, set_at) values ('c3c3c3c3-0000-0000-0000-000000000001', 'b2b2b2b2-0000-0000-0000-000000000001', 'sat', now() - interval '2 minutes');
+reset role;
+select pg_temp.as_user('matt@x.com');
+insert into appointment_updates (client_id, appt, status, appt_at, note, set_at) values ('c3c3c3c3-0000-0000-0000-000000000002', 'b2b2b2b2-0000-0000-0000-000000000001', 'delayed', now() + interval '9 days', 'Wife wants to be there', now() - interval '1 minute');
+select pg_temp.fails($q$insert into appointment_updates (client_id, appt, status) values (gen_random_uuid(), 'b2b2b2b2-0000-0000-0000-000000000001', 'maybe')$q$, 'unknown appointment status');
+select pg_temp.fails($q$insert into appointment_updates (client_id, appt, status, note) values (gen_random_uuid(), 'b2b2b2b2-0000-0000-0000-000000000001', 'sat', 'text me 917 555 0000')$q$, 'phone in update note');
+select pg_temp.fails($q$insert into appointment_updates (client_id, appt, status, rep_id) values (gen_random_uuid(), 'b2b2b2b2-0000-0000-0000-000000000001', 'closed', (select id from reps where name = 'Issac'))$q$, 'update as someone else');
+delete from appointment_updates where client_id = 'c3c3c3c3-0000-0000-0000-000000000001';   -- Issac's: RLS removes 0 rows
+do $$ begin
+  assert (select status from team_appointments where client_id = 'b2b2b2b2-0000-0000-0000-000000000001') = 'delayed', 'newest change wins';
+  assert (select status_rep from team_appointments where client_id = 'b2b2b2b2-0000-0000-0000-000000000001') = 'Matt', 'stamped with the rep';
+  assert (select when_at > now() + interval '8 days' from team_appointments where client_id = 'b2b2b2b2-0000-0000-0000-000000000001'), 'delay moves the time';
+  assert (select count(*) from appointment_history where appt = 'b2b2b2b2-0000-0000-0000-000000000001') = 2, 'history kept, Matt could not remove Issac''s update';
+end $$;
+delete from appointment_updates where client_id = 'c3c3c3c3-0000-0000-0000-000000000002';   -- undo own
+do $$ begin assert (select status from team_appointments where client_id = 'b2b2b2b2-0000-0000-0000-000000000001') = 'sat', 'undo falls back to the previous status'; end $$;
+reset role;
+set role anon;
+select pg_temp.fails('select 1 from appointment_history', 'anon read appointment history');
+reset role;
+
 select pg_temp.as_user('gio@x.com');
 delete from appointments where client_id = 'b2b2b2b2-0000-0000-0000-000000000002';   -- admin may
 do $$ begin assert (select count(*) from team_appointments) = 1, 'admin removed an appointment'; end $$;
@@ -244,4 +268,4 @@ do $$ begin assert (select count(*) from knocks) = 0, 'inactive rep locked out';
 reset role;
 
 \o
-\echo RLS tests passed: 4 active reps (Cody out, Kai in); logged-out/stranger blocked; knocks, turf and notes posted only as yourself; anyone can change any status; no edits; retries safe; undo own; admin override; no phone/email in notes or tags; area tags and appointments shared; inactive locked out
+\echo RLS tests passed: 4 active reps (Cody out, Kai in); logged-out/stranger blocked; knocks, turf and notes posted only as yourself; anyone can change any status; no edits; retries safe; undo own; admin override; no phone/email in notes or tags; area tags, appointments and their outcomes shared; inactive locked out

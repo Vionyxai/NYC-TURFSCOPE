@@ -60,7 +60,7 @@ Report what you changed and why after the first run.
 2. Tune `config/scoring.json` from real knock results (Giovani will supply)
 3. Phase 2: set `areas.json → active_phase: 2` (Manhattan, Bronx, southern Westchester). Suffolk and Brooklyn moved into phase 1. A per-house "owner lives here" flag was looked at: NYC doesn't publish STAR by lot, and the senior/veteran/disabled exemptions in `muvi-b6kx` are personal data, so don't use them.
 4. Nassau/Suffolk block-group scoring (ACS supports it; TIGERweb has a block group layer). Long Island walk lists are built from the NYS assessment roll (`m1-ingest/li_parcels.js`).
-5. ~~Knock tracking~~ built, plus turf claims, notes, pins, saved turfs (003), area tags (005) and appointments (006): `supabase/` (SQL + setup guide), `m3-map/team.js`. Needs the Supabase project URL + publishable key in `config/supabase.json`.
+5. ~~Knock tracking~~ built, plus turf claims, notes, pins, saved turfs (003), area tags (005), appointments (006) and appointment outcomes (007): `supabase/` (SQL + setup guide), `m3-map/team.js`. Needs the Supabase project URL + publishable key in `config/supabase.json`.
 6. `m5-freshness/` n8n jobs (see its README)
 
 ## Glossary

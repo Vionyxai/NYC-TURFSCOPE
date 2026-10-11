@@ -31,6 +31,7 @@ export function buildAppConfig(sb, team, geocoder) {
     turf_statuses: team.turf_statuses,
     note_max: team.note_max,
     tag_max: team.tag_max,
+    appointment_statuses: team.appointment_statuses || [],
     tag_suggestions: team.tag_suggestions || [],
     geocoder: geocoder ? (({ note, ...g }) => g)(geocoder) : null,   // address search (sources.json → geocoder)
     refresh_seconds: team.refresh_seconds,

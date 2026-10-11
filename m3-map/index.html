@@ -121,6 +121,8 @@
   .tagadd { display: flex; gap: 8px; margin-top: 8px; }
   .sres { display: block; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--fg); font: inherit; padding: 12px 4px; min-height: 52px; }
   .sres small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .appt-pin.dim { opacity: .45; }
+  .appt-pin.due { box-shadow: 0 0 0 3px #f59e0b, 0 1px 4px rgba(0,0,0,.35); }
   .appt-pin { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; background: #fff; border: 3px solid; font-size: 17px; box-shadow: 0 1px 4px rgba(0,0,0,.35); }
   input.when { width: 100%; font-size: 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--chip); color: var(--fg); min-height: 44px; }
   .found { margin: 10px 0; padding: 10px 12px; border-radius: 12px; background: var(--chip); }
@@ -391,6 +393,13 @@
   const repColor = (name) => REPCOLOR[name] || '#374151';
   const TURF = Object.fromEntries(((appCfg && appCfg.turf_statuses) || []).map((x) => [x.key, x]));
   const NOTE_MAX = (appCfg && appCfg.note_max) || 280;
+  // Appointment outcomes (config/team.json → appointment_statuses): Sat, Closed, Delayed, Canceled, Installed.
+  const ASTAT = Object.fromEntries(((appCfg && appCfg.appointment_statuses) || []).map((x) => [x.key, x]));
+  const aStat = (k) => ASTAT[k] || { key: k || 'scheduled', label: 'Scheduled', icon: '📅', color: '#2563eb', open: true };
+  const apptWhen = (a) => a.when_at || a.appt_at;
+  // Still open (Scheduled / Sat / Delayed) and its time passed more than an hour ago: needs an outcome.
+  const needsUpdate = (a) => aStat(a.status).open !== false && apptWhen(a) && Date.parse(apptWhen(a)) < Date.now() - 3600000;
+  const statusChip = (a) => { const st = aStat(a.status); return `<span class="badge" style="border-color:${st.color};color:${st.color}">${st.icon} ${esc(st.label)}</span>`; };
   // Active area status for a tract (an "open" entry means nobody has it).
   const turfOf = (geoid) => { const t = K.turf(geoid); return t && t.status !== 'open' ? t : null; };
   const noteWho = (n) => `${esc(n.rep || '')} · ${esc(fmtWhen(n.noted_at))}${n.pending ? ' · waiting to sync' : ''}${n.failed ? ' · NOT SAVED' : ''}`;
@@ -467,7 +476,8 @@
       }
     }
     for (const a of K.appts()) {
-      const m = L.marker([a.lat, a.lon], { icon: L.divIcon({ className: '', html: `<span class="appt-pin" style="border-color:${repColor(a.rep)}">📅</span>`, iconSize: [34, 34], iconAnchor: [17, 17] }), zIndexOffset: 500 });
+      const st = aStat(a.status);
+      const m = L.marker([a.lat, a.lon], { icon: L.divIcon({ className: '', html: `<span class="appt-pin${a.status === 'canceled' ? ' dim' : ''}${needsUpdate(a) ? ' due' : ''}" style="border-color:${repColor(a.rep)}">${st.icon}</span>`, iconSize: [34, 34], iconAnchor: [17, 17] }), zIndexOffset: a.status === 'canceled' ? 0 : 500 });
       m.on('click', (e) => { L.DomEvent.stopPropagation(e); if (placingPin) { placingPin = false; openPinEditor(e.latlng.lat, e.latlng.lng); return; } openAppt(a); });
       m.addTo(overlay);
     }
@@ -592,7 +602,9 @@
       ${sv ? '<button class="btn ghost" id="unsaveBtn">Remove from saved</button>' : ''}</div>`;
     const ap = K.apptsIn(p.geoid);
     const byRep = ap.reduce((m, a) => ((m[a.rep] = (m[a.rep] || 0) + 1), m), {});
-    const apptLine = `<div class="meta" style="margin-bottom:10px">📅 <b>${ap.length}</b> appointment${ap.length === 1 ? '' : 's'} booked here${ap.length ? ` (${Object.entries(byRep).map(([r, n]) => `${esc(r)} ${n}`).join(', ')})` : ''}</div>`;
+    const byStat = ap.reduce((m, a) => ((m[a.status || 'scheduled'] = (m[a.status || 'scheduled'] || 0) + 1), m), {});
+    const outcomeText = ['closed', 'installed', 'sat', 'delayed', 'canceled'].filter((k) => byStat[k]).map((k) => `${aStat(k).icon} ${byStat[k]} ${aStat(k).label.toLowerCase()}`).join(' · ');
+    const apptLine = `<div class="meta" style="margin-bottom:10px">📅 <b>${ap.length}</b> appointment${ap.length === 1 ? '' : 's'} booked here${ap.length ? ` (${Object.entries(byRep).map(([r, n]) => `${esc(r)} ${n}`).join(', ')})` : ''}${outcomeText ? `<br>${outcomeText}` : ''}</div>`;
     box.innerHTML = `${apptLine}<h4>${sv ? 'Saved turf' : '☆ Save turf'}</h4>${saveHtml}<h4>Turf</h4><div>${who}</div>
       <div class="turfrow">${Object.values(TURF).map((x) => `<button data-turf="${esc(x.key)}" class="${cur === x.key ? 'cur' : ''}" title="${esc(x.hint)}">${esc(x.key === 'claimed' && (!t || t.rep !== me.name || cur !== 'claimed') ? 'Claim' : x.label)}</button>`).join('')}</div>
       ${t && (t.mine || me.is_admin) ? '<button class="btn ghost" id="turfUndo">Undo last area change</button>' : ''}`;
@@ -840,7 +852,7 @@
   // Team-wide: who has which turf, and the pins. Redraw the map only when that changes.
   let teamSig = '';
   // Anything that changes what the map draws: turf, pins, appointments.
-  const teamSignature = () => [...K.allTurf().values()].map((t) => t.tract + t.status + t.rep).join() + '|' + K.pins().map((n) => n.client_id).join() + '|' + K.appts().map((a) => a.client_id).join();
+  const teamSignature = () => [...K.allTurf().values()].map((t) => t.tract + t.status + t.rep).join() + '|' + K.pins().map((n) => n.client_id).join() + '|' + K.appts().map((a) => a.client_id + a.status + (a.when_at || '')).join();
   function syncTeam() {
     if (!canKnock()) return;
     K.loadSaved().then(() => { paintAcct(); paintSaved(); }).catch(() => { /* offline */ });
@@ -1100,16 +1112,54 @@
     document.getElementById('noteSheet').classList.add('open');
   }
   function openAppt(a) {
+    a = K.appts().find((x) => x.client_id === a.client_id) || a;     // freshest copy
     const body = document.getElementById('noteBody');
     const me = K.me();
-    body.innerHTML = `<div class="title">📅 ${esc(fmtAppt(a.appt_at))}</div>
+    const st = aStat(a.status);
+    const outcomes = Object.values(ASTAT).filter((x) => x.key !== 'scheduled');
+    body.innerHTML = `<div class="title">${st.icon} ${esc(st.label)} · ${esc(fmtAppt(apptWhen(a)))}</div>
       <div class="meta">${a.address ? `${esc(a.address)} · ` : ''}booked by <b style="color:${repColor(a.rep)}">${esc(a.rep || '')}</b> · ${esc(fmtWhen(a.created_at))}${a.pending ? ' · waiting to sync' : ''}${a.failed ? ' · NOT SAVED' : ''}</div>
       ${a.note ? `<div class="note-item" style="font-size:16px;margin-top:8px">${esc(a.note)}</div>` : ''}
+      ${needsUpdate(a) ? '<div class="warn" style="margin-top:8px">This appointment has passed. What happened?</div>' : ''}
+      <div class="meta" style="margin-top:10px">Update it (one tap; the team sees who changed it)</div>
+      <div class="kgrid">${outcomes.map((o, i) => `<button data-ast="${esc(o.key)}" class="${i === outcomes.length - 1 && outcomes.length % 2 ? 'wide' : ''}${a.status === o.key ? ' cur' : ''}" style="background:${o.color}">${o.icon} ${esc(o.label)}</button>`).join('')}</div>
+      <div id="delayBox" style="display:none">
+        <label class="field">New date and time<input class="when" type="datetime-local" id="delayWhen" min="${localNow()}"></label>
+        <button class="btn" id="delaySave">Save new time</button>
+      </div>
+      <textarea class="note" id="updNote" maxlength="${NOTE_MAX}" placeholder="Note with this update (optional), e.g. “Signed for 3 heads” — no names or phone numbers"></textarea>
+      <div class="err" id="updErr"></div>
+      <div class="section"><h4>History</h4><div id="apptHist" class="notes"><div class="meta">Loading…</div></div></div>
       <a class="btn ghost" style="text-align:center;text-decoration:none" href="https://maps.apple.com/?daddr=${a.lat},${a.lon}&dirflg=w" target="_blank" rel="noopener">Walk here</a>
       ${a.mine || (me && me.is_admin) ? '<button class="btn ghost" id="apptDel">Delete appointment</button>' : ''}
       <button class="btn ghost" id="apptClose">Close</button>`;
+    const save = (status, apptAt) => {
+      try {
+        const u = K.setApptStatus(a.client_id, status, { appt_at: apptAt || null, note: document.getElementById('updNote').value });
+        toast(`${aStat(status).icon} ${aStat(status).label}${apptAt ? ` · ${fmtAppt(apptAt)}` : ''}${a.address ? ` · ${a.address}` : ''}`, async () => { await K.undoApptStatus(u.client_id); render(); drawOverlay(); });
+        render(); drawOverlay(); openAppt(a);
+      } catch (ex) { document.getElementById('updErr').textContent = ex.message; }
+    };
+    body.querySelectorAll('[data-ast]').forEach((b) => (b.onclick = () => {
+      if (b.dataset.ast === 'delayed') { document.getElementById('delayBox').style.display = ''; body.querySelectorAll('[data-ast]').forEach((x) => x.classList.toggle('cur', x === b)); return; }
+      save(b.dataset.ast);
+    }));
+    document.getElementById('delaySave').onclick = () => {
+      const v = document.getElementById('delayWhen').value;
+      if (!v) { document.getElementById('updErr').textContent = 'Pick the new date and time.'; return; }
+      save('delayed', new Date(v).toISOString());
+    };
+    K.apptHistory(a.client_id).then((rows) => {
+      const el = document.getElementById('apptHist'); if (!el) return;
+      const created = `<div class="note-item">📅 Booked${a.appt_at ? ` for ${esc(fmtAppt(a.appt_at))}` : ''}<span class="who">${esc(a.rep || '')} · ${esc(fmtWhen(a.created_at))}</span></div>`;
+      el.innerHTML = rows.map((h) => { const hs = aStat(h.status);
+        return `<div class="note-item">${(h.mine || (me && me.is_admin)) && !h.pending ? `<button data-undo="${esc(h.client_id)}">Undo</button>` : ''}${hs.icon} ${esc(hs.label)}${h.appt_at ? ` → ${esc(fmtAppt(h.appt_at))}` : ''}${h.note ? ` · ${esc(h.note)}` : ''}<span class="who">${esc(h.rep || '')} · ${esc(fmtWhen(h.set_at))}${h.pending ? ' · waiting to sync' : ''}</span></div>`; }).join('') + created;
+      el.querySelectorAll('[data-undo]').forEach((b) => (b.onclick = async () => {
+        try { await K.undoApptStatus(b.dataset.undo); toast('Update undone'); render(); drawOverlay(); openAppt(a); } catch (ex) { toast(`Couldn't undo: ${ex.message}`); }
+      }));
+    }).catch(() => { const el = document.getElementById('apptHist'); if (el) el.innerHTML = '<div class="meta">Offline — history shows when you have signal.</div>'; });
     const del = document.getElementById('apptDel');
-    if (del) del.onclick = async () => { try { await K.deleteAppt(a.client_id); closeAll(); render(); drawOverlay(); toast('Appointment deleted'); } catch (ex) { toast(`Couldn't delete: ${ex.message}`); } };
+    if (del) del.onclick = async () => { if (!confirm('Delete this appointment for the whole team?')) return; try { await K.deleteAppt(a.client_id); closeAll(); render(); drawOverlay(); toast('Appointment deleted'); } catch (ex) { toast(`Couldn't delete: ${ex.message}`); } };
     document.getElementById('apptClose').onclick = closeAll;
     document.getElementById('noteSheet').classList.add('open');
   }
@@ -1157,7 +1207,8 @@
     acctBtn.style.display = '';
     const n = K.pendingCount();
     const me = K.me();
-    acctBtn.textContent = !K.signedIn() ? 'Sign in' : me ? `${me.name}${n ? ` · ${n} to sync` : ''}` : 'Not on team';
+    const due = me ? K.appts().filter((a) => a.rep === me.name && needsUpdate(a)).length : 0;   // my past appointments with no outcome yet
+    acctBtn.textContent = !K.signedIn() ? 'Sign in' : me ? `${me.name}${n ? ` · ${n} to sync` : ''}${due ? ` · ⚠️ ${due}` : ''}` : 'Not on team';
     acctBtn.classList.toggle('warn', K.signedIn() && (!me || n > 0));
   }
   const closeAll = () => ['acctSheet', 'knockSheet', 'noteSheet'].forEach((id) => document.getElementById(id).classList.remove('open'));
@@ -1205,7 +1256,9 @@
         ${n ? '<button class="btn" id="acctSync">Sync now</button>' : ''}
         <div class="section"><h4>My turf</h4><div id="myTurf" class="mine-list"></div></div>
         <div class="section"><h4>My come-backs &amp; interested</h4><div id="myFollow" class="mine-list meta">Loading…</div></div>
-        <div class="section"><h4>📅 Appointments</h4><div id="apptList" class="mine-list"></div></div>
+        <div class="section" id="apptDueBox" style="display:none"><h4>⚠️ Appointments that need an update</h4><div id="apptDue" class="mine-list"></div></div>
+        <div class="section"><h4>📅 Upcoming appointments</h4><div id="apptList" class="mine-list"></div></div>
+        <div class="section"><h4>Team results</h4><div id="apptStats" class="meta"></div></div>
         <div class="section"><h4>Where the team books most</h4><div id="apptTop" class="mine-list"></div></div>
         <div class="section"><h4>Team today</h4><div id="scoreBox" class="meta">Loading…</div></div>
         <button class="btn ghost" id="acctOut">Sign out</button>
@@ -1227,13 +1280,23 @@
       }).catch(() => { const el = document.getElementById('myFollow'); if (el) el.textContent = 'Offline — shows when you have signal.'; });
       document.querySelectorAll('#myTurf [data-go]').forEach((x) => (x.onclick = () => goTract(x.dataset.go)));
       const all = K.appts();
-      const upcoming = all.filter((a) => !a.appt_at || Date.parse(a.appt_at) >= Date.now() - 3600000).slice(0, 15);
-      document.getElementById('apptList').innerHTML = upcoming.length ? upcoming.map((a) => `<div class="item" data-appt="${esc(a.client_id)}"><div class="a">${esc(fmtAppt(a.appt_at))} · ${esc(a.address || (a.tract ? `tract ${a.tract.slice(5)}` : 'map pin'))}<small><b style="color:${repColor(a.rep)}">${esc(a.rep || '')}</b>${a.note ? ` · ${esc(a.note.slice(0, 60))}` : ''}</small></div></div>`).join('')
+      const apptRow = (a) => `<div class="item" data-appt="${esc(a.client_id)}"><div class="a">${esc(fmtAppt(apptWhen(a)))} · ${esc(a.address || (a.tract ? `tract ${a.tract.slice(5)}` : 'map pin'))}<small>${statusChip(a)} <b style="color:${repColor(a.rep)}">${esc(a.rep || '')}</b>${a.note ? ` · ${esc(a.note.slice(0, 60))}` : ''}</small></div></div>`;
+      const due = all.filter((a) => needsUpdate(a)).sort((x, y) => (x.rep === me.name ? 0 : 1) - (y.rep === me.name ? 0 : 1));
+      document.getElementById('apptDueBox').style.display = due.length ? '' : 'none';
+      document.getElementById('apptDue').innerHTML = due.slice(0, 20).map(apptRow).join('');
+      const upcoming = all.filter((a) => aStat(a.status).open !== false && !needsUpdate(a)).slice(0, 15);
+      document.getElementById('apptList').innerHTML = upcoming.length ? upcoming.map(apptRow).join('')
         : '<div class="meta">No upcoming appointments. Tap <b>Booked</b> on a house to pin one.</div>';
-      document.querySelectorAll('#apptList [data-appt]').forEach((x) => (x.onclick = () => { const a = all.find((y) => y.client_id === x.dataset.appt); if (!a) return; closeAll(); map.setView([a.lat, a.lon], 17); openAppt(a); }));
-      const top = Object.entries(all.reduce((m, a) => (a.tract ? ((m[a.tract] = (m[a.tract] || 0) + 1), m) : m), {})).sort((x, y) => y[1] - x[1]).slice(0, 5);
+      const counts = all.reduce((m, a) => ((m[a.status || 'scheduled'] = (m[a.status || 'scheduled'] || 0) + 1), m), {});
+      const satPlus = (counts.sat || 0) + (counts.closed || 0) + (counts.installed || 0), won = (counts.closed || 0) + (counts.installed || 0);
+      document.getElementById('apptStats').innerHTML = all.length
+        ? `${all.length} booked · ${Object.values(ASTAT).filter((x) => counts[x.key]).map((x) => `${x.icon} ${counts[x.key]} ${esc(x.label.toLowerCase())}`).join(' · ')}<br><b>${Math.round((won / all.length) * 100)}%</b> of booked appointments closed${satPlus ? ` · <b>${Math.round((won / satPlus) * 100)}%</b> of sits closed` : ''}`
+        : 'Shows once the team pins appointments.';
+      document.querySelectorAll('#apptList [data-appt], #apptDue [data-appt]').forEach((x) => (x.onclick = () => { const a = all.find((y) => y.client_id === x.dataset.appt); if (!a) return; closeAll(); map.setView([a.lat, a.lon], 17); openAppt(a); }));
+      const wonIn = all.reduce((m, a) => (a.tract && ['closed', 'installed'].includes(a.status) ? ((m[a.tract] = (m[a.tract] || 0) + 1), m) : m), {});
+      const top = Object.entries(all.reduce((m, a) => (a.tract ? ((m[a.tract] = (m[a.tract] || 0) + 1), m) : m), {})).sort((x, y) => (wonIn[y[0]] || 0) - (wonIn[x[0]] || 0) || y[1] - x[1]).slice(0, 5);
       document.getElementById('apptTop').innerHTML = top.length ? top.map(([g, n]) => { const f = featBy(g); const pp = f ? f.properties : null;
-        return `<div class="item" data-go="${esc(g)}"><div class="a">${pp ? `${esc(pp.county_name)} · tract ${esc(g.slice(5))}` : esc(g)}<small>📅 ${n} appointment${n === 1 ? '' : 's'}${pp ? ` · score ${pp.score}` : ''}</small></div></div>`; }).join('')
+        return `<div class="item" data-go="${esc(g)}"><div class="a">${pp ? `${esc(pp.county_name)} · tract ${esc(g.slice(5))}` : esc(g)}<small>📅 ${n} booked${wonIn[g] ? ` · 🤝 ${wonIn[g]} closed` : ''}${pp ? ` · score ${pp.score}` : ''}</small></div></div>`; }).join('')
         + '<button class="btn ghost" id="apptColor">Color the map by appointments</button>'
         : '<div class="meta">Shows up once the team pins appointments.</div>';
       document.querySelectorAll('#apptTop [data-go]').forEach((x) => (x.onclick = () => goTract(x.dataset.go)));

@@ -18,7 +18,7 @@
   }
 
   // Where each kind of entry is stored in the database.
-  const TABLE = { knock: 'knocks', turf: 'turf_log', note: 'notes', saved: 'saved_turfs', tag: 'area_tags', appt: 'appointments' };
+  const TABLE = { knock: 'knocks', turf: 'turf_log', note: 'notes', saved: 'saved_turfs', tag: 'area_tags', appt: 'appointments', apptUpd: 'appointment_updates' };
 
   function createTeam(opts) {
     const sb = opts.supabase;                 // { url, key } or null when not set up
@@ -58,7 +58,11 @@
       if (q.kind === 'turf') turfBy.set(q.row.tract, { ...q.row, ...mine });
       if (q.kind === 'note') notes.set(q.row.client_id, { ...q.row, ...mine });
       if (q.kind === 'tag') tags.set(q.row.client_id, { ...q.row, ...mine });
-      if (q.kind === 'appt') appts.set(q.row.client_id, { ...q.row, ...mine });
+      if (q.kind === 'appt') appts.set(q.row.client_id, { status: 'scheduled', when_at: q.row.appt_at, ...q.row, ...mine });
+      if (q.kind === 'apptUpd') {                 // show the new outcome on the appointment right away
+        const a = appts.get(q.row.appt);
+        if (a) appts.set(q.row.appt, { ...a, status: q.row.status, status_at: q.row.set_at, status_rep: me && me.name, when_at: q.row.appt_at || a.when_at, statusPending: true, lastUpdate: q.row.client_id });
+      }
       if (q.kind === 'saved') {
         teamSaved = teamSaved.filter((x) => !(x.tract === q.row.tract && me && x.rep === me.name));
         teamSaved.push({ ...q.row, ...mine });
@@ -174,6 +178,7 @@
       if (q.kind === 'note') upd(notes, q.row.client_id);
       if (q.kind === 'tag') upd(tags, q.row.client_id);
       if (q.kind === 'appt') upd(appts, q.row.client_id);
+      if (q.kind === 'apptUpd') { const a = appts.get(q.row.appt); if (a && a.lastUpdate === q.row.client_id) appts.set(q.row.appt, { ...a, statusPending: false, statusFailed: failed || undefined }); }
       if (q.kind === 'saved') teamSaved = teamSaved.map((x) => (x.client_id === q.row.client_id ? { ...x, pending: false, failed: failed || undefined } : x));
     }
 
@@ -303,6 +308,25 @@
         appt_at: appt_at || null, note: n || null, created_at: iso(),
       });
     }
+    // What happened after: Sat, Closed, Delayed (with a new time), Canceled, Installed. Anyone on the
+    // team can update any appointment; each change is stamped with the rep and kept as history.
+    function setApptStatus(apptId, status, { appt_at, note } = {}) {
+      if (!appts.has(String(apptId))) throw new Error('That appointment isn\'t loaded yet.');
+      const n = note == null ? '' : String(note).trim();
+      if (n) { const problem = noteProblem(n, noteMax); if (problem) throw new Error(problem.replace('in notes', 'in appointment notes')); }
+      return enqueue('apptUpd', { appt: String(apptId), status, appt_at: appt_at || null, note: n || null, set_at: iso() });
+    }
+    // Undo a status change you made (the admin can undo anyone's), then reload to show the one before.
+    async function undoApptStatus(updateId) {
+      await remove('apptUpd', updateId);
+      await loadTeam().catch(() => {});
+    }
+    async function apptHistory(apptId) {
+      const rows = await call(`/rest/v1/appointment_history?appt=eq.${encodeURIComponent(apptId)}&select=client_id,status,appt_at,note,set_at,rep&order=set_at.desc`)
+        .catch((e) => (e.status === 404 ? [] : Promise.reject(e)));
+      const pend = queue.filter((q) => q.kind === 'apptUpd' && q.row.appt === String(apptId)).map((q) => ({ ...q.row, rep: me && me.name, pending: true }));
+      return [...pend.reverse(), ...(rows || [])].map((r) => ({ ...r, mine: !!me && r.rep === me.name }));
+    }
     async function deleteAppt(clientId) {
       await remove('appt', clientId);
       appts.delete(clientId);
@@ -310,7 +334,7 @@
     }
     // Upcoming first (soonest), then ones with no time, then past ones (most recent first).
     const apptOrder = (a, b) => {
-      const t = now(), ka = a.appt_at ? Date.parse(a.appt_at) : null, kb = b.appt_at ? Date.parse(b.appt_at) : null;
+      const t = now(), wa = a.when_at || a.appt_at, wb = b.when_at || b.appt_at, ka = wa ? Date.parse(wa) : null, kb = wb ? Date.parse(wb) : null;
       const rank = (k) => (k == null ? 1 : k >= t ? 0 : 2);
       if (rank(ka) !== rank(kb)) return rank(ka) - rank(kb);
       if (ka == null) return a.created_at < b.created_at ? 1 : -1;
@@ -348,13 +372,16 @@
       const [turf, ps, as] = await Promise.all([
         call('/rest/v1/turf_status?select=tract,status,set_at,client_id,rep'),
         call('/rest/v1/team_notes?lat=not.is.null&select=client_id,tract,bbl,address,lat,lon,body,noted_at,rep&order=noted_at.desc&limit=2000'),
-        call('/rest/v1/team_appointments?select=client_id,tract,bbl,address,lat,lon,appt_at,note,created_at,rep&order=created_at.desc&limit=5000')
-          .catch((e) => (e.status === 404 ? null : Promise.reject(e))),   // 404 until 006 is run
+        call('/rest/v1/team_appointments?select=client_id,tract,bbl,address,lat,lon,appt_at,note,created_at,rep,status,status_at,status_rep,when_at&order=created_at.desc&limit=5000')
+          .catch((e) => (e.status === 400   // 007 not run yet: no outcome columns
+            ? call('/rest/v1/team_appointments?select=client_id,tract,bbl,address,lat,lon,appt_at,note,created_at,rep&order=created_at.desc&limit=5000')
+            : e.status === 404 ? null : Promise.reject(e)))   // 404 until 006 is run
       ]);
       if (as) {
         const pendAppts = pendingKeys('appt', 'client_id');
         for (const id of [...appts.keys()]) if (!pendAppts.has(id)) appts.delete(id);
-        for (const a of as) appts.set(a.client_id, { ...a, mine: !!me && a.rep === me.name });
+        for (const a of as) appts.set(a.client_id, { status: 'scheduled', when_at: a.appt_at, ...a, mine: !!me && a.rep === me.name });
+        for (const q of queue) if (q.kind === 'apptUpd') applyLocal(q);   // unsent outcome changes stay on top
       }
       const pend = pendingKeys('turf', 'tract');
       for (const t of [...turfBy.keys()]) if (!pend.has(t)) turfBy.delete(t);
@@ -422,7 +449,7 @@
     return {
       enabled: !!sb,
       signIn, signOut, loadMe, flush,
-      record, undo, setTurf, undoTurf, addNote, deleteNote, addTag, deleteTag, tagsFor, addAppt, deleteAppt,
+      record, undo, setTurf, undoTurf, addNote, deleteNote, addTag, deleteTag, tagsFor, addAppt, deleteAppt, setApptStatus, undoApptStatus, apptHistory,
       appts: allAppts, apptsIn: (tract) => allAppts().filter((a) => a.tract === String(tract)),
       loadTract, loadTeam, tractProgress, repStats, myFollowups,
       saveTurf, unsaveTurf, loadSaved, turfStage,

@@ -331,6 +331,8 @@ t('Supabase SQL matches config/team.json (reps, statuses, follow-ups)', () => {
   assert.deepEqual(lists('status'), [team.knock_statuses.map((x) => x.key), team.turf_statuses.map((x) => x.key)]);
   assert.deepEqual(lists('followup'), [team.followups.map((x) => x.key)]);
   assert.match(sql, new RegExp(`char_length\\(t\\) <= ${team.note_max}`));
+  const outSql = fs.readFileSync(path.join(ROOT, 'supabase', '007_appointment_outcomes.sql'), 'utf8');
+  assert.deepEqual([...outSql.match(/status in \(([^)]+)\)/)[1].matchAll(/'([^']+)'/g)].map((x) => x[1]), team.appointment_statuses.map((x) => x.key), 'appointment outcomes match team.json');
   const tagSql = fs.readFileSync(path.join(ROOT, 'supabase', '005_area_tags.sql'), 'utf8');
   assert.match(tagSql, new RegExp(`char_length\\(btrim\\(label\\)\\) between 1 and ${team.tag_max} and public\\.clean_note\\(label\\)`), 'tag length + clean rule match team.json');
 });
@@ -770,6 +772,34 @@ await at('appointments: pinned for the team with time and note, no phone numbers
   await gio.deleteAppt(gio.appts()[0].client_id);                                 // admin can remove anyone's
   await matt.loadTeam();
   assert.equal(matt.appts().length, 1);
+});
+await at('appointment outcomes: anyone updates, newest wins, delay moves the time, undo own, history, offline', async () => {
+  const sb = makeTeam();
+  const matt = app(sb, memoryStorage()); await matt.signIn('matt@x.com', 'pw-matt');
+  const at1 = new Date(clock + 86400000).toISOString(), at2 = new Date(clock + 5 * 86400000).toISOString();
+  const a = matt.addAppt({ tract: TR, bbl: '4012345678', address: '138-04 109 AVENUE', lat: 40.6871, lon: -73.8072, appt_at: at1 });
+  await matt.flush();
+  assert.equal(matt.appts()[0].status, 'scheduled');
+  const gio = app(sb, memoryStorage()); await gio.signIn('gio@x.com', 'pw-gio'); await gio.loadTeam();
+  gio.setApptStatus(a.client_id, 'sat'); await gio.flush();                       // a teammate can update it
+  clock += 60000;
+  sb.state.offline = true;
+  const d = matt.setApptStatus(a.client_id, 'delayed', { appt_at: at2, note: 'Wife wants to be there' });
+  assert.equal(matt.appts()[0].status, 'delayed');                                 // shows right away, offline
+  assert.equal(matt.appts()[0].when_at, at2);
+  assert.throws(() => matt.setApptStatus(a.client_id, 'sat', { note: 'cell 516-555-1234' }), /phone numbers in appointment notes/);
+  sb.state.offline = false; await matt.flush();
+  await gio.loadTeam();
+  const seen = gio.appts()[0];
+  assert.deepEqual([seen.status, seen.status_rep, seen.when_at], ['delayed', 'Matt', at2]);
+  const hist = await gio.apptHistory(a.client_id);
+  assert.deepEqual([...hist.map((h) => `${h.rep}:${h.status}`)], ['Matt:delayed', 'Gio:sat']);
+  await matt.undoApptStatus(d.client_id);                                          // undo own → back to Gio's "sat"
+  assert.equal(matt.appts()[0].status, 'sat');
+  assert.equal(matt.appts()[0].when_at, at1);
+  clock += 60000;
+  matt.setApptStatus(a.client_id, 'closed'); await matt.flush(); await gio.loadTeam();
+  assert.equal(gio.appts()[0].status, 'closed');
 });
 await at('mixed offline queue (knock, claim, note) syncs in order after a reload', async () => {
   const sb = makeTeam(); const storage = memoryStorage();

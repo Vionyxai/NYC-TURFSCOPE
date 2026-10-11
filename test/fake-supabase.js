@@ -2,7 +2,7 @@
 // It mirrors the rules in supabase/001_team_tracking.sql closely enough to test the app logic offline.
 // (The real rules are tested against Postgres by supabase/tests/rls_test.sql.)
 export function fakeSupabase({ users, reps, statuses, turfStatuses = ['claimed', 'finished', 'avoid', 'open'] }) {
-  const tables = { knocks: [], turf_log: [], notes: [], saved_turfs: [], area_tags: [], appointments: [] };
+  const tables = { knocks: [], turf_log: [], notes: [], saved_turfs: [], area_tags: [], appointments: [], appointment_updates: [] };
   const tokens = new Map();          // access token -> email
   const refreshTokens = new Map();   // refresh token -> email
   let n = 0, ids = 0;
@@ -28,7 +28,13 @@ export function fakeSupabase({ users, reps, statuses, turfStatuses = ['claimed',
     team_notes: () => tables.notes.map((x) => ({ ...x, rep: repName(x.rep_id) })),
     team_saved_turfs: () => tables.saved_turfs.map((x) => ({ ...x, rep: repName(x.rep_id) })),
     team_tags: () => tables.area_tags.map((x) => ({ ...x, rep: repName(x.rep_id) })),
-    team_appointments: () => tables.appointments.map((x) => ({ ...x, rep: repName(x.rep_id) })),
+    team_appointments: () => tables.appointments.map((x) => {
+      const ups = tables.appointment_updates.filter((u) => u.appt === x.client_id).sort((a, b) => (a.set_at === b.set_at ? b.id - a.id : a.set_at < b.set_at ? 1 : -1));
+      const moved = ups.find((u) => u.appt_at);
+      return { ...x, rep: repName(x.rep_id), status: ups[0] ? ups[0].status : 'scheduled', status_at: ups[0] ? ups[0].set_at : null,
+        status_rep: ups[0] ? repName(ups[0].rep_id) : null, when_at: moved ? moved.appt_at : x.appt_at };
+    }),
+    appointment_history: () => tables.appointment_updates.map((u) => ({ ...u, rep: repName(u.rep_id) })).sort((a, b) => (a.set_at < b.set_at ? 1 : -1)),
     tract_activity: () => {
       const tracts = new Set([...tables.knocks, ...tables.notes, ...tables.turf_log].map((x) => x.tract).filter(Boolean));
       const turf = newest(tables.turf_log, 'tract', 'set_at');
@@ -58,6 +64,7 @@ export function fakeSupabase({ users, reps, statuses, turfStatuses = ['claimed',
     turf_log: (t) => turfStatuses.includes(t.status),
     notes: (x) => x.body && x.body.trim() && x.body.length <= 280 && !phone.test(x.body) && !email.test(x.body),
     saved_turfs: (x) => /^[0-9]{11}$/.test(x.tract),
+    appointment_updates: (x) => ['scheduled', 'sat', 'closed', 'delayed', 'canceled', 'installed'].includes(x.status) && tables.appointments.some((a) => a.client_id === x.appt) && (x.note == null || (!phone.test(x.note) && !email.test(x.note))),
     appointments: (x) => x.lat >= 40 && x.lat <= 42 && x.lon >= -75 && x.lon <= -71 && (x.note == null || (x.note.trim() && x.note.length <= 280 && !phone.test(x.note) && !email.test(x.note))),
     area_tags: (x) => /^[0-9]{11}$/.test(x.tract) && x.label && x.label.trim() && x.label.length <= 40 && !phone.test(x.label) && !email.test(x.label),
   };

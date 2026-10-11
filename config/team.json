@@ -1,5 +1,5 @@
 {
-  "_readme": "The field team and tracking options. The reps list is the source for the Supabase reps table (supabase/001_team_tracking.sql seeds the team, later numbered SQL files add or deactivate reps; npm test checks the active list matches). Each rep's color outlines the turf they claim on the map. Fill in each rep's email after you create their login in Supabase (supabase/README.md step 4). Knock statuses, follow-ups and turf statuses must match the SQL check rules (npm test checks that too). Notes are free text up to note_max characters; the database refuses phone numbers and emails in notes. Area tags are short labels on a tract (up to tag_max characters, same no-phone/no-email rule as notes); tag_suggestions are one-tap choices on the tract card, and reps can type their own.",
+  "_readme": "The field team and tracking options. The reps list is the source for the Supabase reps table (supabase/001_team_tracking.sql seeds the team, later numbered SQL files add or deactivate reps; npm test checks the active list matches). Each rep's color outlines the turf they claim on the map. Fill in each rep's email after you create their login in Supabase (supabase/README.md step 4). Knock statuses, follow-ups and turf statuses must match the SQL check rules (npm test checks that too). Notes are free text up to note_max characters; the database refuses phone numbers and emails in notes. Area tags are short labels on a tract (up to tag_max characters, same no-phone/no-email rule as notes); tag_suggestions are one-tap choices on the tract card, and reps can type their own. appointment_statuses = what happened after an appointment was pinned (supabase/007 must list the same keys; npm test checks); open = still needs an outcome.",
   "reps": [
     {
       "name": "Issac",
@@ -106,5 +106,53 @@
     "No soliciting signs",
     "Block association active",
     "Skip for now"
+  ],
+  "appointment_statuses": [
+    {
+      "key": "scheduled",
+      "label": "Scheduled",
+      "icon": "📅",
+      "color": "#2563eb",
+      "open": true
+    },
+    {
+      "key": "sat",
+      "label": "Sat",
+      "icon": "🪑",
+      "color": "#7c3aed",
+      "open": true,
+      "hint": "Met the homeowner"
+    },
+    {
+      "key": "closed",
+      "label": "Closed",
+      "icon": "🤝",
+      "color": "#16a34a",
+      "open": false,
+      "hint": "Signed / sold"
+    },
+    {
+      "key": "delayed",
+      "label": "Delayed",
+      "icon": "⏳",
+      "color": "#d97706",
+      "open": true,
+      "hint": "Moved to a new time"
+    },
+    {
+      "key": "canceled",
+      "label": "Canceled",
+      "icon": "✖️",
+      "color": "#6b7280",
+      "open": false
+    },
+    {
+      "key": "installed",
+      "label": "Installed",
+      "icon": "🔧",
+      "color": "#0f766e",
+      "open": false,
+      "hint": "Heat pump is in"
+    }
   ]
 }
