@@ -38,6 +38,7 @@
     const K2 = { saved: 'ts.saved', activity: 'ts.activity' };
     let teamSaved = [];                       // everyone's saved turfs: { tract, plan_date, saved_at, rep, client_id }
     let activity = {};                        // tract -> { knocked, notes, pins, turf_status, turf_rep, last_at, last_rep }
+    let results = null;                       // rep_tract_results rows (008), or null until loaded / before 008 is run
     let flushing = null;
 
     const read = (k, d) => { try { const v = store.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
@@ -440,6 +441,18 @@
       return (a && (a.knocked || a.notes || a.pins || (a.turf_status && a.turf_status !== 'open'))) || localWork ? 'working' : 'queued';
     };
 
+    // "My fit": doors, appointments and outcomes per rep per tract (008). null before 008 is run.
+    async function loadRepResults() {
+      try {
+        results = (await call('/rest/v1/rep_tract_results?select=rep,tract,doors,last_knock_at,appts,sat,closed,installed&limit=20000')) || [];
+      } catch (e) {
+        if (e.status !== 404) throw e;
+        results = null;
+      }
+      emit();
+      return results;
+    }
+
     // "My stuff": my come-backs and interested houses across all tracts.
     async function myFollowups() {
       if (!me) return [];
@@ -451,7 +464,8 @@
       signIn, signOut, loadMe, flush,
       record, undo, setTurf, undoTurf, addNote, deleteNote, addTag, deleteTag, tagsFor, addAppt, deleteAppt, setApptStatus, undoApptStatus, apptHistory,
       appts: allAppts, apptsIn: (tract) => allAppts().filter((a) => a.tract === String(tract)),
-      loadTract, loadTeam, tractProgress, repStats, myFollowups,
+      loadTract, loadTeam, tractProgress, repStats, myFollowups, loadRepResults,
+      repResults: () => results,
       saveTurf, unsaveTurf, loadSaved, turfStage,
       mySaved: () => teamSaved.filter((x) => me && x.rep === me.name),
       teamSaved: () => teamSaved,

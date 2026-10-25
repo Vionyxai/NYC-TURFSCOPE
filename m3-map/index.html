@@ -127,6 +127,9 @@
   input.when { width: 100%; font-size: 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--chip); color: var(--fg); min-height: 44px; }
   .found { margin: 10px 0; padding: 10px 12px; border-radius: 12px; background: var(--chip); }
   .found .btn { margin-top: 8px; }
+  .fitline { margin: 8px 0 2px; font-size: 14px; }
+  .fitline .toes, .item .toes { margin-top: 4px; color: #b45309; font-size: 13px; font-weight: 600; }
+  .fitlist .item { cursor: default; }
   .tagadd input { flex: 1; min-width: 0; font-size: 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--chip); color: var(--fg); }
   .tagadd .btn { width: auto; margin: 0; padding: 10px 18px; }
   .mix { display: flex; height: 12px; border-radius: 6px; overflow: hidden; margin: 6px 0; background: var(--line); }
@@ -205,7 +208,8 @@
   <div class="meta">Pick any mix. Nothing picked in a group means any.</div>
   <button class="btn" id="oilFocus" style="background:#92400e;color:#fff">Oil focus</button>
   <div class="group"><h4>Heating oil (share of homes heated with oil)</h4><div class="row" id="tgOil"></div></div>
-  <div class="group"><h4>Color the map by</h4><div class="seg" id="colorBy"><button data-c="score" class="on">TurfScore</button><button data-c="oil">Oil %</button><button data-c="appts" id="colorAppts" style="display:none">📅 Appointments</button></div></div>
+  <div class="group"><h4>Color the map by</h4><div class="seg" id="colorBy"><button data-c="score" class="on">TurfScore</button><button data-c="oil">Oil %</button><button data-c="appts" id="colorAppts" style="display:none">📅 Appts</button><button data-c="fit" id="colorFit" style="display:none">🎯 My fit</button></div></div>
+  <div class="group" id="fitAsGroup" style="display:none"><h4>Whose fit map</h4><div class="row" id="fitAs"></div><div class="meta" id="fitAsNote"></div></div>
   <div class="group"><h4>Income (tract median)</h4><div class="row" id="tgIncome"></div></div>
   <div class="group"><h4>Home age (year built)</h4><div class="row" id="tgHome"></div></div>
   <div class="group"><h4>Homeowner age (rough estimate) — more than usual</h4><div class="row" id="tgAge"></div></div>
@@ -251,6 +255,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="team.js"></script>
 <script src="search.js"></script>
+<script src="fit.js"></script>
 <script>
 (async function () {
   if (typeof L === 'undefined') { document.getElementById('meta').textContent = 'Map failed to load — check your connection and refresh'; return; }
@@ -272,7 +277,7 @@
   const money = (x) => (x == null ? '—' : '$' + Math.round(x / 1000) + 'k');
 
   let placingPin = false;                                      // true after "Tap a spot on the map"
-  const state = { util: 'all', dac: false, mine: false, min: 0, oils: new Set(), colorBy: 'score', bestSort: 'score', incomes: new Set(), homes: new Set(), ages: new Set(), sizes: new Set(), langs: new Set(), rets: new Set(), votes: new Set() };
+  const state = { util: 'all', dac: false, mine: false, min: 0, oils: new Set(), colorBy: 'score', bestSort: 'score', bestWorked: false, incomes: new Set(), homes: new Set(), ages: new Set(), sizes: new Set(), langs: new Set(), rets: new Set(), votes: new Set() };
   let data, summary, walkIndex = {}, layer, currentList = null;
 
   const map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([40.72, -73.75], 11);
@@ -307,6 +312,12 @@
       document.getElementById('legendScale').innerHTML = `<span>1</span><span>${APPT_BREAKS[APPT_BREAKS.length - 1]}+</span>`;
       return;
     }
+    if (state.colorBy === 'fit' && fitOn()) {
+      const who = fitWho(), pr = profileOf(who);
+      document.getElementById('legendTitle').textContent = `🎯 ${who === K.me().name ? 'My fit' : `${who}'s fit`}${!pr || pr.learning ? ' (team pattern)' : ''}`;
+      document.getElementById('legendScale').innerHTML = '<span>0</span><span>100</span>';
+      return;
+    }
     document.getElementById('legendTitle').textContent = oil ? 'Homes heated with oil' : 'TurfScore';
     const br = (typeof OIL_BREAKS !== 'undefined' ? OIL_BREAKS : [0.1, 0.25, 0.4, 0.6]);
     document.getElementById('legendScale').innerHTML = oil ? `<span>0%</span><span>${Math.round(br[br.length - 1] * 100)}%+</span>` : '<span>0</span><span>100</span>';
@@ -327,7 +338,7 @@
   let apptCount = new Map();
   const countAppts = () => { apptCount = new Map(); for (const a of K.appts()) if (a.tract) apptCount.set(a.tract, (apptCount.get(a.tract) || 0) + 1); };
   const apptColor = (n) => (n ? COLORS[APPT_BREAKS.filter((b) => n >= b).length] : '#e5e7eb');
-  const fillFor = (p) => (state.colorBy === 'oil' ? oilColor(oilOf(p)) : state.colorBy === 'appts' ? apptColor(apptCount.get(p.geoid) || 0) : colorFor(p.score));
+  const fillFor = (p) => (state.colorBy === 'oil' ? oilColor(oilOf(p)) : state.colorBy === 'appts' ? apptColor(apptCount.get(p.geoid) || 0) : state.colorBy === 'fit' && fitOn() ? colorFor(fitOf(p).score) : colorFor(p.score));
   const homeLabel = (k) => (TG.home_age_bands.find((b) => b.key === k) || {}).label || '';
   // Walk list: the house-level targets (home age, house size) filter each lot by its own facts.
   const lotPasses = (r) => (!state.homes.size || state.homes.has(r.age)) && (!state.sizes.size || state.sizes.has(r.size)) && (!walk.oilOnly || r.fuel === 'oil');
@@ -432,6 +443,72 @@
       ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
       : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
   };
+  // ---------- My fit: each rep's personal turf map (m3-map/fit.js, settings in config/scoring.json → personal) ----------
+  const PERSONAL = (appCfg && appCfg.personal) || null;
+  const FIT = window.TurfFit && PERSONAL ? window.TurfFit : null;
+  const propsBy = new Map(data.features.map((f) => [f.properties.geoid, f.properties]));
+  const fitView = { as: null };                                // whose map: me unless a leader picks "View as"
+  let fitModel = { rows: undefined, profiles: null, cache: new Map() };
+  const fitOn = () => !!FIT && canKnock() && Array.isArray(K.repResults && K.repResults());
+  const fitWho = () => fitView.as || (K.me() && K.me().name);
+  function profiles() {
+    const rows = K.repResults();
+    if (fitModel.rows !== rows) fitModel = { rows, profiles: FIT.buildProfiles(rows || [], (g) => propsBy.get(g), PERSONAL), cache: new Map() };
+    return fitModel.profiles;
+  }
+  function fitOf(p, who = fitWho()) {
+    const pr = profiles(), key = `${who}|${p.geoid}`;
+    if (!fitModel.cache.has(key)) fitModel.cache.set(key, FIT.fit(p, pr.reps[who], pr.team, PERSONAL));
+    return fitModel.cache.get(key);
+  }
+  const profileOf = (who = fitWho()) => (fitOn() ? profiles().reps[who] || null : null);
+  // Plain words for a trait ("Before 1940 homes", "Spanish speakers", "Leans Democratic").
+  const TRAIT_WORDS = {
+    home_age_band: (v) => `${homeLabel(v) || v} homes`,
+    income_band: (v) => `${v} income`,
+    size_band: (v) => `${sizeLabel(v) || v} houses`,
+    oil: (v) => ({ low: 'Little oil heat', some: 'Some oil heat', high: 'Lots of oil heat' }[v] || v),
+    language: (v) => (v === 'English' ? 'Mostly English at home' : `${v} speakers`),
+    owner_age: (v) => `Owners mostly ${((TG.owner_age_bands.find((b) => b.key === v) || {}).label || v)}`,
+    retired: (v) => ({ low: 'Few retirees', mid: 'Some retirees', high: 'Lots of retirees' }[v] || v),
+    vote: (v) => ({ R: 'Leans Republican', mixed: 'Mixed voting', D: 'Leans Democratic' }[v] || v),
+    utility: (v) => utLabel(v),
+    county: (v) => v,
+    dac: (v) => (v === 'yes' ? 'DAC tracts' : 'Non-DAC tracts'),
+    renter_heavy: (v) => (v === 'yes' ? 'Renter-heavy' : 'Mostly owners'),
+  };
+  const traitWords = (t) => (TRAIT_WORDS[t.group] || ((v) => v))(t.value);
+  const liftWords = (l) => `${l.toFixed(1)}×`;
+  // Someone else on this turf: claimed by another rep, or another rep knocked here in the last recent_days.
+  function othersOn(geoid, who = (K.me() && K.me().name)) {
+    const out = [];
+    const t = turfOf(geoid);
+    if (t && t.status === 'claimed' && t.rep !== who) out.push({ rep: t.rep, text: `${t.rep} claimed it ${fmtWhen(t.set_at)}` });
+    const rows = (K.repResults && K.repResults()) || [];
+    const days = (PERSONAL && PERSONAL.recent_days) || 14;
+    for (const r of FIT ? FIT.recentOthers(rows, geoid, who, Date.now(), days) : []) {
+      if (out.some((x) => x.rep === r.rep)) continue;
+      const ago = Math.max(0, Math.floor((Date.now() - Date.parse(r.last_knock_at)) / 86400000));
+      out.push({ rep: r.rep, text: `${r.rep} knocked ${ago === 0 ? 'today' : ago === 1 ? 'yesterday' : `${ago} days ago`} (${r.doors} door${r.doors === 1 ? '' : 's'})` });
+    }
+    return out;
+  }
+  // Heads-up before working turf a teammate has. Never blocks: any rep can still go ahead.
+  const okToWork = (geoid, what) => {
+    const o = othersOn(geoid);
+    return !o.length || window.confirm(`Heads up: ${o.map((x) => x.text).join(' · ')}.\n\n${what} anyway?`);
+  };
+  function fitLine(p) {
+    if (!fitOn()) return '';
+    const who = fitWho(), f = fitOf(p, who), me = K.me();
+    const whose = who === me.name ? 'Your fit' : `${esc(who)}'s fit`;
+    const pr = profileOf(who);
+    const why = f.reasons.map((r) => `${r.lift >= 1 ? '▲' : '▼'} ${esc(traitWords(r))} ${liftWords(r.lift)}`).join(' · ');
+    const o = othersOn(p.geoid);
+    return `<div class="fitline"><b style="color:${colorFor(f.score)}">🎯 ${whose}: ${f.score}</b>
+      ${f.learning ? `<span class="meta">· learning — ${pr ? pr.remaining : PERSONAL.min_doors} more doors, using the team's pattern</span>` : why ? `<span class="meta">· ${why}</span>` : '<span class="meta">· about average for you</span>'}
+      ${o.length ? `<div class="toes">⚠️ ${esc(o.map((x) => x.text).join(' · '))}</div>` : ''}</div>`;
+  }
   // Planned dates are plain YYYY-MM-DD in the phone's local time.
   const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const addDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return ymd(d); };
@@ -474,6 +551,17 @@
         const label = `${t.rep}${t.status === 'finished' ? ' ✓' : t.status === 'avoid' ? ' · avoid' : ''}`;
         L.marker(c, { interactive: false, icon: L.divIcon({ className: '', html: `<span class="rep-label" style="background:${t.status === 'avoid' ? '#111827' : repColor(t.rep)}">${esc(label)}</span>`, iconSize: null }) }).addTo(overlay);
       }
+      // My fit map: "Kai · 3d" on turf a teammate knocked lately (and nobody has claimed).
+      if (state.colorBy === 'fit' && fitOn()) {
+        const who = fitWho(), days = PERSONAL.recent_days || 14;
+        for (const f of data.features) {
+          if (turfOf(f.properties.geoid) || !passes(f.properties)) continue;
+          const r = FIT.recentOthers(K.repResults(), f.properties.geoid, who, Date.now(), days)[0];
+          if (!r) continue;
+          const ago = Math.max(0, Math.floor((Date.now() - Date.parse(r.last_knock_at)) / 86400000));
+          L.marker(L.geoJSON(f).getBounds().getCenter(), { interactive: false, icon: L.divIcon({ className: '', html: `<span class="rep-label" style="background:${repColor(r.rep)};opacity:.85">${esc(r.rep)} · ${ago ? `${ago}d` : 'today'}</span>`, iconSize: null }) }).addTo(overlay);
+        }
+      }
     }
     for (const a of K.appts()) {
       const st = aStat(a.status);
@@ -497,10 +585,15 @@
       style: (f) => {
         const t = turfOf(f.properties.geoid);
         const base = { fillColor: fillFor(f.properties), fillOpacity: 0.55, color: utColor(f.properties.utility), weight: 1.2, opacity: 0.9 };
+        // My fit map: turf a teammate claimed or knocked lately is faded, so nobody double-knocks.
+        if (state.colorBy === 'fit' && fitOn() && othersOn(f.properties.geoid, fitWho()).length) {
+          base.fillOpacity = 0.12;
+          if (!t) return { ...base, dashArray: '3 5' };
+        }
         if (!t) return base;
         // Claimed = solid outline in the rep's color, finished = dashed, avoid = dark dotted and faded.
         if (t.status === 'avoid') return { ...base, color: '#111827', weight: 3, dashArray: '2 6', fillOpacity: 0.2 };
-        return { ...base, color: repColor(t.rep), weight: 4, dashArray: t.status === 'finished' ? '8 6' : null, fillOpacity: t.status === 'finished' ? 0.3 : 0.55 };
+        return { ...base, color: repColor(t.rep), weight: 4, dashArray: t.status === 'finished' ? '8 6' : null, fillOpacity: base.fillOpacity < 0.55 ? base.fillOpacity : t.status === 'finished' ? 0.3 : 0.55 };
       },
       onEachFeature: (f, l) => l.on('click', (e) => {
         L.DomEvent.stopPropagation(e);
@@ -533,6 +626,7 @@
           </div>
         </div>
       </div>
+      ${fitLine(p)}
       <div class="kv">
         <div><span>1–4 unit homes</span>${p.homes.toLocaleString()}${p.homes_source === 'acs_est' ? ` <small class="meta">Census est.${hasList ? '; the walk list counts every address on the tax roll' : ''}</small>` : ''}</div>
         <div><span>Median income</span>${money(p.median_income)} ${p.income_band ? `<small class="meta">${esc(p.income_band)}</small>` : ''}</div>
@@ -564,7 +658,7 @@
     document.getElementById('sheet').classList.add('open');
     openedAt = Date.now();
     document.getElementById('closeSheet').onclick = () => { openedAt = 0; closeSheet(); };
-    if (hasList) document.getElementById('walkBtn').onclick = () => openWalk(p);
+    if (hasList) document.getElementById('walkBtn').onclick = () => { if (!canKnock() || okToWork(p.geoid, 'Open the walk list')) openWalk(p); };
     const fh = document.getElementById('findHouseBtn');
     if (fh) fh.onclick = async () => { await openWalk(p); findHouse(); };
     if (canKnock()) {
@@ -609,6 +703,7 @@
       <div class="turfrow">${Object.values(TURF).map((x) => `<button data-turf="${esc(x.key)}" class="${cur === x.key ? 'cur' : ''}" title="${esc(x.hint)}">${esc(x.key === 'claimed' && (!t || t.rep !== me.name || cur !== 'claimed') ? 'Claim' : x.label)}</button>`).join('')}</div>
       ${t && (t.mine || me.is_admin) ? '<button class="btn ghost" id="turfUndo">Undo last area change</button>' : ''}`;
     box.querySelectorAll('[data-turf]').forEach((b) => (b.onclick = () => {
+      if (b.dataset.turf === 'claimed' && !(t && t.rep === me.name && cur === 'claimed') && !okToWork(p.geoid, 'Claim it')) return;
       try { K.setTurf(p.geoid, b.dataset.turf); toast(`${(TURF[b.dataset.turf] || {}).label} · tract ${p.geoid.slice(5)}`); paintTractTeam(p); render(); }
       catch (ex) { toast(ex.message); }
     }));
@@ -852,7 +947,7 @@
   // Team-wide: who has which turf, and the pins. Redraw the map only when that changes.
   let teamSig = '';
   // Anything that changes what the map draws: turf, pins, appointments.
-  const teamSignature = () => [...K.allTurf().values()].map((t) => t.tract + t.status + t.rep).join() + '|' + K.pins().map((n) => n.client_id).join() + '|' + K.appts().map((a) => a.client_id + a.status + (a.when_at || '')).join();
+  const teamSignature = () => [...K.allTurf().values()].map((t) => t.tract + t.status + t.rep).join() + '|' + K.pins().map((n) => n.client_id).join() + '|' + K.appts().map((a) => a.client_id + a.status + (a.when_at || '')).join() + '|' + ((K.repResults && K.repResults()) || []).map((r) => r.rep + r.tract + r.doors + r.appts + r.closed + r.last_knock_at).join();
   function syncTeam() {
     if (!canKnock()) return;
     K.loadSaved().then(() => { paintAcct(); paintSaved(); }).catch(() => { /* offline */ });
@@ -860,6 +955,7 @@
       const sig = teamSignature();
       if (sig !== teamSig) { teamSig = sig; render(); }
     }).catch(() => { /* offline */ });
+    if (FIT && K.loadRepResults) K.loadRepResults().then(() => paintAcct()).catch(() => { /* offline: keep the last copy */ });
   }
 
   // Pull the team's latest knocks and notes for the open walk list.
@@ -932,7 +1028,14 @@
   }
 
   function openBest() {
-    const all = data.features.filter((f) => passes(f.properties)); // already sorted by score
+    if (state.bestSort === 'fit' && !fitOn()) state.bestSort = 'score';
+    let all = data.features.filter((f) => passes(f.properties)); // already sorted by score
+    let hidden = 0;
+    if (state.bestSort === 'fit') {
+      const who = fitWho();
+      if (!state.bestWorked) { const n = all.length; all = all.filter((f) => !othersOn(f.properties.geoid, who).length); hidden = n - all.length; }
+      all.sort((a, b) => fitOf(b.properties, who).raw - fitOf(a.properties, who).raw || b.properties.score - a.properties.score);
+    }
     if (state.bestSort === 'oil') all.sort((a, b) => (oilOf(b.properties) ?? -1) - (oilOf(a.properties) ?? -1) || b.properties.score - a.properties.score);
     const top = all.slice(0, 25);
     currentList = null;
@@ -942,17 +1045,28 @@
     document.getElementById('panelTitle').textContent = 'Best turf';
     const sortBar = `<div class="row" style="padding:10px 0;gap:8px"><div class="seg" id="bestSort">
         <button data-b="score" class="${state.bestSort === 'score' ? 'on' : ''}">Top score</button>
-        <button data-b="oil" class="${state.bestSort === 'oil' ? 'on' : ''}">Most oil</button></div>
-        <span class="meta">${all.length} tract${all.length === 1 ? '' : 's'} match</span></div>`;
+        <button data-b="oil" class="${state.bestSort === 'oil' ? 'on' : ''}">Most oil</button>
+        ${fitOn() ? `<button data-b="fit" class="${state.bestSort === 'fit' ? 'on' : ''}">🎯 For ${fitWho() === K.me().name ? 'me' : esc(fitWho())}</button>` : ''}</div>
+        <span class="meta">${all.length} tract${all.length === 1 ? '' : 's'} match</span></div>
+        ${state.bestSort === 'fit' ? `<div class="row" style="gap:8px;padding-bottom:6px"><button class="chip${state.bestWorked ? ' on' : ''}" id="bestWorked">Include teammates' turf</button>
+          <span class="meta">${state.bestWorked ? 'Showing turf others claimed or knocked lately too' : hidden ? `${hidden} hidden: claimed or knocked by a teammate in the last ${PERSONAL.recent_days || 14} days` : 'No teammate turf to hide right now'}</span></div>
+          ${profileOf() && !profileOf().learning ? '' : `<div class="warn">Still learning ${fitWho() === K.me().name ? 'you' : esc(fitWho())} — ${profileOf() ? profileOf().remaining : PERSONAL.min_doors} more doors. Until then this uses the team's pattern.</div>`}` : ''}`;
     document.getElementById('panelList').innerHTML = sortBar + top.map((f, i) => {
       const p = f.properties;
+      const ft = state.bestSort === 'fit' ? fitOf(p) : null;
+      const o = ft ? othersOn(p.geoid, fitWho()) : [];
+      const sc = ft ? ft.score : p.score;
       return `<div class="item" data-i="${i}">
-        <div class="s" style="color:${colorFor(p.score)}">${p.score}</div>
+        <div class="s" style="color:${colorFor(sc)}">${sc}</div>
         <div class="a">${esc(p.county_name)} · tract ${esc(p.geoid.slice(5))}
-          <small><b>${pct(oilOf(p))} oil</b> · ${p.homes.toLocaleString()} homes · ${money(p.median_income)} · ${pct(p.pre1980)} pre-1980 · ${esc(utLabel(p.utility))}${p.dac ? ' · DAC' : ''}</small></div>
+          <small><b>${pct(oilOf(p))} oil</b> · ${p.homes.toLocaleString()} homes · ${money(p.median_income)} · ${pct(p.pre1980)} pre-1980 · ${esc(utLabel(p.utility))}${p.dac ? ' · DAC' : ''}</small>
+          ${ft ? `<small>TurfScore ${p.score}${ft.reasons.length ? ` · ${ft.reasons.map((r) => `${r.lift >= 1 ? '▲' : '▼'} ${esc(traitWords(r))}`).join(' · ')}` : ''}</small>` : ''}
+          ${o.length ? `<div class="toes">⚠️ ${esc(o.map((x) => x.text).join(' · '))}</div>` : ''}</div>
       </div>`;
     }).join('') + (top.length ? '' : '<div class="empty">Nothing matches these filters.</div>');
     document.querySelectorAll('#bestSort button').forEach((b) => (b.onclick = () => { state.bestSort = b.dataset.b; openBest(); }));
+    const bw = document.getElementById('bestWorked');
+    if (bw) bw.onclick = () => { state.bestWorked = !state.bestWorked; openBest(); };
     document.querySelectorAll('#panelList .item[data-i]').forEach((el) => {
       el.onclick = () => {
         const f = top[Number(el.dataset.i)];
@@ -1005,12 +1119,28 @@
     for (const [id, k] of groups) document.querySelectorAll(`#${id} .chip`).forEach((b) => b.classList.toggle('on', state[k].has(b.dataset.k)));
     const n = state.incomes.size + state.homes.size + state.ages.size + state.sizes.size + state.oils.size + state.langs.size + state.rets.size + state.votes.size;
     document.querySelectorAll('#colorBy button').forEach((b) => b.classList.toggle('on', b.dataset.c === state.colorBy));
+    paintFitAs();
     paintLegend();
     const tb = document.getElementById('targetBtn');
     tb.textContent = n ? `Target · ${n}` : 'Target';
     tb.classList.toggle('on', n > 0);
     const n2 = countMatches();
     document.getElementById('targetDone').textContent = `Show ${n2} tract${n2 === 1 ? '' : 's'}`;
+  }
+  // "View as": anyone can look at any rep's fit map (leaders use it to recommend turf).
+  function paintFitAs() {
+    const g = document.getElementById('fitAsGroup');
+    const on = state.colorBy === 'fit' && fitOn();
+    g.style.display = on ? '' : 'none';
+    if (!on) return;
+    const pr = profiles(), who = fitWho();
+    const names = ((appCfg && appCfg.reps) || []).map((r) => r.name);
+    document.getElementById('fitAs').innerHTML = names.map((n) => `<button class="chip${n === who ? ' on' : ''}" data-as="${esc(n)}" style="border-color:${repColor(n)}">${esc(n === K.me().name ? `${n} (me)` : n)}</button>`).join('');
+    const p = pr.reps[who];
+    document.getElementById('fitAsNote').textContent = !p ? `${who} has no doors logged yet — showing the team's pattern.`
+      : p.learning ? `${who}: ${p.doors} doors so far, ${p.remaining} more before the map is personal. Showing the team's pattern meanwhile.`
+      : `${who}: ${p.doors} doors · ${p.appts} appointments · ${p.closed} closed. Faded turf = a teammate claimed it or knocked it in the last ${PERSONAL.recent_days || 14} days.`;
+    document.querySelectorAll('#fitAs [data-as]').forEach((b) => (b.onclick = () => { fitView.as = b.dataset.as === K.me().name ? null : b.dataset.as; paintTarget(); render(); }));
   }
   for (const [id, k, opts] of groups) {
     const el = document.getElementById(id);
@@ -1043,6 +1173,7 @@
     };
   }
   document.querySelectorAll('#colorBy button').forEach((b) => (b.onclick = () => { state.colorBy = b.dataset.c; paintTarget(); render(); }));
+  const showFit = () => { state.colorBy = 'fit'; paintTarget(); render(); };
   map.on('click', () => document.getElementById('targetSheet').classList.remove('open'));
 
   document.querySelectorAll('#walkSort button').forEach((b) => (b.onclick = () => {
@@ -1197,6 +1328,8 @@
     const on = K.enabled && K.signedIn() && !!K.me();
     document.getElementById('mineBtn').style.display = on ? '' : 'none';
     const cab = document.getElementById('colorAppts'); if (cab) cab.style.display = on ? '' : 'none';
+    const cfb = document.getElementById('colorFit'); if (cfb) cfb.style.display = on && fitOn() ? '' : 'none';
+    if (state.colorBy === 'fit' && !fitOn()) state.colorBy = 'score';
     const sb = document.getElementById('savedBtn');
     sb.style.display = on ? '' : 'none';
     if (on) { const n = K.mySaved().length; sb.textContent = n ? `★ Saved · ${n}` : '★ Saved'; }
@@ -1254,6 +1387,7 @@
         <div class="meta">${esc(K.email())}</div>
         <div class="warn" style="margin-top:10px">${n ? `<b>${n} knock${n === 1 ? '' : 's'} waiting to sync.</b> They're saved on this phone and go up as soon as you have signal.` : 'All knocks synced.'}</div>
         ${n ? '<button class="btn" id="acctSync">Sync now</button>' : ''}
+        <div class="section" id="fitBox" style="display:none"><h4>🎯 What works for you</h4><div id="fitStrengths" class="mine-list fitlist"></div></div>
         <div class="section"><h4>My turf</h4><div id="myTurf" class="mine-list"></div></div>
         <div class="section"><h4>My come-backs &amp; interested</h4><div id="myFollow" class="mine-list meta">Loading…</div></div>
         <div class="section" id="apptDueBox" style="display:none"><h4>⚠️ Appointments that need an update</h4><div id="apptDue" class="mine-list"></div></div>
@@ -1266,6 +1400,7 @@
       if (n) document.getElementById('acctSync').onclick = async () => { await K.flush(); openAcct(); };
       const featBy = (g) => data.features.find((f) => f.properties.geoid === g);
       const goTract = (g) => { const f = featBy(g); if (!f) return; closeAll(); map.fitBounds(L.geoJSON(f).getBounds(), { maxZoom: 15 }); openSheet(f.properties); };
+      paintStrengths();
       const mineTurf = [...K.allTurf().values()].filter((t) => t.rep === me.name && t.status !== 'open');
       document.getElementById('myTurf').innerHTML = mineTurf.length ? mineTurf.map((t) => {
         const f = featBy(t.tract); const pp = f ? f.properties : null;
@@ -1315,6 +1450,24 @@
     document.getElementById('sheet').classList.remove('open');
     document.getElementById('targetSheet').classList.remove('open');
     document.getElementById('acctSheet').classList.add('open');
+  }
+  // My stuff → What works for you: the traits where you book (and close) better or worse than usual.
+  function paintStrengths() {
+    const box = document.getElementById('fitBox');
+    if (!box) return;
+    box.style.display = fitOn() ? '' : 'none';
+    if (!fitOn()) return;
+    const me = K.me(), pr = profileOf(me.name);
+    const s = FIT.strengths(pr, PERSONAL);
+    const row = (x) => `<div class="item"><div class="a">${x.lift >= 1 ? '▲' : '▼'} ${esc(traitWords(x))} <b>${liftWords(x.lift)}</b><small>${x.doors.toLocaleString()} doors · ${x.appts} appt${x.appts === 1 ? '' : 's'}${x.per100 != null ? ` (${x.per100.toFixed(1)} per 100 doors)` : ''}${x.closed ? ` · ${x.closed} closed` : ''}</small></div></div>`;
+    const head = !pr ? `<div class="meta">No doors logged yet. Log knocks and appointments and TurfScope learns which turf works for you (${PERSONAL.min_doors} doors to start).</div>`
+      : `<div class="meta">${pr.doors.toLocaleString()} doors · ${pr.appts} appointments${pr.per100 != null ? ` (${pr.per100.toFixed(1)} per 100 doors)` : ''} · ${pr.closed} closed${pr.learning ? ` · <b>learning: ${pr.remaining} more doors</b> before your map is personal` : ''}</div>`;
+    document.getElementById('fitStrengths').innerHTML = head
+      + (s.good.length ? `<div class="meta" style="margin-top:6px">Works for you</div>${s.good.map(row).join('')}` : '')
+      + (s.bad.length ? `<div class="meta" style="margin-top:6px">Harder for you</div>${s.bad.map(row).join('')}` : '')
+      + (pr && !s.good.length && !s.bad.length ? '<div class="meta" style="margin-top:6px">No clear pattern yet — keep logging.</div>' : '')
+      + '<button class="btn ghost" id="fitColor">Show my fit map</button>';
+    document.getElementById('fitColor').onclick = () => { fitView.as = null; closeAll(); showFit(); toast('Map colored by your fit · faded = a teammate is working it'); };
   }
   acctBtn.onclick = openAcct;
   document.getElementById('savedBtn').onclick = openSaved;

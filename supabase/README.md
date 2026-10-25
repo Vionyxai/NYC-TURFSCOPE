@@ -66,6 +66,9 @@ Paste `supabase/006_appointments.sql` and press **Run** (once). Until then appoi
 ## Step 4g: appointment outcomes
 Paste `supabase/007_appointment_outcomes.sql` and press **Run** (once). Until then the outcome buttons show but changes won't save for the team.
 
+## Step 4h: My fit (each rep's own turf map)
+Paste `supabase/008_rep_results.sql` and press **Run** (once). It adds one read-only view, `rep_tract_results`: per rep, per tract, the houses they knocked, their last knock, and the appointments they booked there with how far each got. Nothing new is stored. Until it's run, the 🎯 My fit option stays hidden.
+
 ## Step 5: connect the app
 1. **Project Settings → API Keys** (or **API**). Copy:
    - **Project URL**, like `https://abcd1234.supabase.co`

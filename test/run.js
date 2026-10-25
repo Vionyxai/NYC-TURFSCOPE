@@ -170,6 +170,41 @@ t('address search: pasted addresses cleaned, simpler fallbacks tried', () => {
   assert.equal(cleanAddress('9 Nimbus Rd'), '9 Nimbus Rd');
   assert.deepEqual([...searchVariants('  ')], []);
 });
+t('My fit: each rep learns which turf works for them; small samples stay put; new reps learn', () => {
+  const ctxF = {};
+  vm.runInNewContext(fs.readFileSync(path.join(ROOT, 'm3-map', 'fit.js'), 'utf8'), { window: ctxF });
+  const { traitsOf, buildProfiles, fit, strengths, recentOthers } = ctxF.TurfFit;
+  const cfg = readCfg('scoring.json').personal;
+  const old = { score: 60, home_age_band: 'pre1940', fuel: { oil: 0.5 }, county_name: 'Queens', utility: 'coned', dac: false };
+  const neu = { score: 60, home_age_band: '2000p', fuel: { oil: 0.05 }, county_name: 'Queens', utility: 'coned', dac: false };
+  assert.deepEqual([...traitsOf(old, cfg).map((t) => t.id)], ['home_age_band:pre1940', 'oil:high', 'utility:coned', 'county:Queens', 'dac:no']);
+  const tracts = { OLD1: old, OLD2: old, NEW1: neu, NEW2: neu };
+  const rows = [
+    { rep: 'Matt', tract: 'OLD1', doors: 300, appts: 24, closed: 8 }, { rep: 'Matt', tract: 'NEW1', doors: 300, appts: 6, closed: 2 },
+    { rep: 'Kai', tract: 'OLD2', doors: 300, appts: 5, closed: 1 }, { rep: 'Kai', tract: 'NEW2', doors: 300, appts: 21, closed: 7 },
+    { rep: 'Issac', tract: 'OLD1', doors: 40, appts: 2, closed: 0 },
+    { rep: 'Gio', tract: 'OLD1', doors: 400, appts: 16, closed: 4 }, { rep: 'Gio', tract: 'NEW1', doors: 6, appts: 3, closed: 0 },   // 3 lucky appointments in 6 doors
+  ];
+  const { team, reps } = buildProfiles(rows, (g) => tracts[g], cfg);
+  const fm = (p, r) => fit(p, reps[r], team, cfg);
+  assert.ok(fm(old, 'Matt').score > fm(neu, 'Matt').score, 'Matt books better in old, oil-heated homes');
+  assert.ok(fm(neu, 'Kai').score > fm(old, 'Kai').score, 'Kai books better in newer homes: a different map');
+  const M = reps.Matt.lift;
+  assert.ok(M['home_age_band:pre1940'].liftA > 1.2 && M['home_age_band:2000p'].liftA < 0.85, 'appointment rate: old homes much better for Matt');
+  assert.ok(M['home_age_band:pre1940'].lift > 1.1 && M['home_age_band:2000p'].lift < 0.9, 'blend still favors old homes (his close rate is the same in both)');
+  assert.equal(fm(old, 'Matt').reasons[0].group, 'home_age_band');                         // the tract card can say why
+  assert.ok(Math.abs(reps.Gio.lift['home_age_band:2000p'].liftA - 1) < 0.25, '3 lucky appointments in 6 doors barely move it');
+  assert.equal(reps.Issac.learning, true); assert.equal(reps.Issac.remaining, cfg.min_doors - 40);
+  assert.equal(fm(old, 'Issac').score, fit(old, null, team, cfg).score, 'a learning rep sees the team pattern');
+  for (const r of Object.keys(reps)) for (const p of [old, neu, { ...old, score: 99 }, { ...neu, score: 1 }]) { const x = fm(p, r).score; assert.ok(x >= 0 && x <= 100); }
+  const top = [85, 92].map((s) => fm({ ...old, score: s }, 'Matt').score);
+  assert.ok(top[0] < top[1] && top[1] < 100, 'great tracts still rank apart instead of all reading 100');
+  assert.deepEqual([...strengths(reps.Matt, cfg).good.map((x) => x.id)].slice(0, 2).sort(), ['home_age_band:pre1940', 'oil:high']);
+  const now = Date.parse('2026-10-25T12:00:00Z');
+  const recent = recentOthers([{ rep: 'Kai', tract: 'T', doors: 42, last_knock_at: '2026-10-22T15:00:00Z' }, { rep: 'Gio', tract: 'T', doors: 9, last_knock_at: '2026-09-01T15:00:00Z' },
+    { rep: 'Matt', tract: 'T', doors: 5, last_knock_at: '2026-10-24T15:00:00Z' }], 'T', 'Matt', now, cfg.recent_days);
+  assert.deepEqual([...recent.map((r) => `${r.rep}:${r.doors}`)], ['Kai:42']);                // not me, not 7 weeks ago
+});
 t('PLUTO bct2020 → GEOID', () => {
   assert.equal(plutoTractGeoid('4012300'), '36081012300');
   assert.equal(plutoTractGeoid('4000100.0'), '36081000100');
@@ -800,6 +835,24 @@ await at('appointment outcomes: anyone updates, newest wins, delay moves the tim
   clock += 60000;
   matt.setApptStatus(a.client_id, 'closed'); await matt.flush(); await gio.loadTeam();
   assert.equal(gio.appts()[0].status, 'closed');
+});
+await at('My fit data: doors, appointments and closes per rep per tract; empty before 008 is run', async () => {
+  const sb = makeTeam();
+  const matt = app(sb, memoryStorage()); await matt.signIn('matt@x.com', 'pw-matt');
+  matt.record('4012345678', TR, 'no_answer', null, 'A'); clock += 60000;
+  matt.record('4012345678', TR, 'booked', null, 'A'); clock += 60000;
+  matt.record('4012345679', TR, 'not_interested', null, 'B');
+  const a = matt.addAppt({ tract: TR, bbl: '4012345678', lat: 40.6871, lon: -73.8072, appt_at: new Date(clock + 86400000).toISOString() });
+  await matt.flush();
+  matt.setApptStatus(a.client_id, 'closed'); await matt.flush();
+  const gio = app(sb, memoryStorage()); await gio.signIn('gio@x.com', 'pw-gio');
+  const rows = await gio.loadRepResults();
+  assert.equal(rows.length, 1);
+  assert.deepEqual([rows[0].rep, rows[0].doors, rows[0].appts, rows[0].sat, rows[0].closed], ['Matt', 2, 1, 1, 1]);   // 2 houses, not 3 knocks
+  assert.equal(gio.repResults(), rows);
+  const before008 = app({ ...sb, fetch: (u, o) => (u.includes('rep_tract_results') ? Promise.resolve(new Response('{}', { status: 404 })) : sb.fetch(u, o)) }, memoryStorage());
+  await before008.signIn('matt@x.com', 'pw-matt');
+  assert.equal(await before008.loadRepResults(), null);
 });
 await at('mixed offline queue (knock, claim, note) syncs in order after a reload', async () => {
   const sb = makeTeam(); const storage = memoryStorage();

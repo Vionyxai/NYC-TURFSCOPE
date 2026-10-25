@@ -32,7 +32,8 @@ else {
 const FROM = { saved_turfs: '003_saved_turfs.sql', team_saved_turfs: '003_saved_turfs.sql', tract_activity: '003_saved_turfs.sql',
   area_tags: '005_area_tags.sql', team_tags: '005_area_tags.sql',
   appointments: '006_appointments.sql', team_appointments: '006_appointments.sql',
-  appointment_updates: '007_appointment_outcomes.sql', appointment_history: '007_appointment_outcomes.sql' };
+  appointment_updates: '007_appointment_outcomes.sql', appointment_history: '007_appointment_outcomes.sql',
+  rep_tract_results: '008_rep_results.sql' };
 for (const t of ['reps', 'knocks', 'turf_log', 'notes', 'latest_knocks', 'turf_status', 'team_notes', 'tract_progress', 'rep_stats', ...Object.keys(FROM)]) {
   const file = `supabase/${FROM[t] || '001_team_tracking.sql'}`;
   const r = await get(`/rest/v1/${t}?select=*&limit=1`);

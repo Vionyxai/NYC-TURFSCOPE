@@ -261,6 +261,27 @@ set role anon;
 select pg_temp.fails('select 1 from team_appointments', 'anon read appointments');
 reset role;
 
+-- Results per rep per tract (008): doors count each house once, appointments with how far they got
+select pg_temp.as_user('issac@x.com');
+insert into knocks (client_id, bbl, tract, status) values
+  (gen_random_uuid(), '3012340001', '36047101200', 'no_answer'),
+  (gen_random_uuid(), '3012340001', '36047101200', 'interested'),
+  (gen_random_uuid(), '3012340002', '36047101200', 'booked');
+insert into appointments (client_id, tract, bbl, lat, lon) values ('d4d4d4d4-0000-0000-0000-000000000001', '36047101200', '3012340002', 40.65, -73.94);
+insert into appointment_updates (client_id, appt, status) values (gen_random_uuid(), 'd4d4d4d4-0000-0000-0000-000000000001', 'closed');
+do $$ begin
+  assert (select doors from rep_tract_results where rep = 'Issac' and tract = '36047101200') = 2, 'doors = houses, not knocks';
+  assert (select (appts, sat, closed, installed) = (1::bigint, 1::bigint, 1::bigint, 0::bigint) from rep_tract_results where rep = 'Issac' and tract = '36047101200'), 'closed counts as sat too';
+  assert (select last_knock_at is not null from rep_tract_results where rep = 'Issac' and tract = '36047101200'), 'last knock time for the toes warning';
+end $$;
+reset role;
+select pg_temp.as_user('matt@x.com');
+do $$ begin assert (select count(*) from rep_tract_results where rep = 'Issac') >= 1, 'the team sees each other''s results'; end $$;
+reset role;
+set role anon;
+select pg_temp.fails('select 1 from rep_tract_results', 'anon read rep results');
+reset role;
+
 -- Someone leaves the team
 update reps set active = false where name = 'Matt';
 select pg_temp.as_user('matt@x.com');
@@ -268,4 +289,4 @@ do $$ begin assert (select count(*) from knocks) = 0, 'inactive rep locked out';
 reset role;
 
 \o
-\echo RLS tests passed: 4 active reps (Cody out, Kai in); logged-out/stranger blocked; knocks, turf and notes posted only as yourself; anyone can change any status; no edits; retries safe; undo own; admin override; no phone/email in notes or tags; area tags, appointments and their outcomes shared; inactive locked out
+\echo RLS tests passed: 4 active reps (Cody out, Kai in); logged-out/stranger blocked; knocks, turf and notes posted only as yourself; anyone can change any status; no edits; retries safe; undo own; admin override; no phone/email in notes or tags; area tags, appointments and their outcomes shared; per-rep results; inactive locked out

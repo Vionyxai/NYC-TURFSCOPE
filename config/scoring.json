@@ -1,40 +1,122 @@
 {
   "_readme": "TurfScore = sum of weight * factor (each factor 0-1). Weights should total 100. Tune these from field results, not from code.",
-  "weights": { "volume": 25, "fuel": 25, "age": 20, "owner": 15, "incentive": 15 },
+  "weights": {
+    "volume": 25,
+    "fuel": 25,
+    "age": 20,
+    "owner": 15,
+    "incentive": 15
+  },
   "volume_cap_homes": 800,
-  "fuel_weights": { "oil": 1.0, "propane": 1.0, "electric": 0.5, "other": 0.5, "gas": 0.25, "none": 0 },
+  "fuel_weights": {
+    "oil": 1.0,
+    "propane": 1.0,
+    "electric": 0.5,
+    "other": 0.5,
+    "gas": 0.25,
+    "none": 0
+  },
   "low_income_threshold": 100000,
   "incentive": {
-    "coned":  { "dac": 1.0 },
-    "psegli": { "dac": 0.5, "low_income_share": 0.5 }
+    "coned": {
+      "dac": 1.0
+    },
+    "psegli": {
+      "dac": 0.5,
+      "low_income_share": 0.5
+    }
   },
   "income_bands": [
-    { "label": "<60k",     "max": 60000 },
-    { "label": "60–100k",  "max": 100000 },
-    { "label": "100–150k", "max": 150000 },
-    { "label": "150k+",    "max": null }
+    {
+      "label": "<60k",
+      "max": 60000
+    },
+    {
+      "label": "60–100k",
+      "max": 100000
+    },
+    {
+      "label": "100–150k",
+      "max": 150000
+    },
+    {
+      "label": "150k+",
+      "max": null
+    }
   ],
   "targeting": {
     "_readme": "Filters a rep can mix and match on the map. Picking none in a group means any. Heating oil uses the ACS share of homes heated with oil (B25040); picking several oil bands uses the lowest one. oil_focus is the one-tap preset; oil_color_breaks are the edges of the five map colors when coloring by oil. Home age uses the median year built of 1-4 family lots in NYC (PLUTO), else ACS B25035; walk lists filter each house by its own year. A tract is flagged renter-heavy when renter-occupied households are at least renter_heavy_share. Homeowner age uses ACS B25007 brackets (15-24, 25-34, 35-44, 45-54, 55-59, 60-64, 65-74, 75-84, 85+), so band edges must fall on those. House size uses building square feet where NYC lot data exists, otherwise ACS median rooms. Retired households = share of households with retirement income (pension, 401k/IRA payouts; ACS B19059); picking several retired bands uses the lowest one. The card also shows the share with Social Security (B19055). Voting = 2020 presidential vote by precinct (sources.json → elections), spread over tracts by area; a tract needs vote_min_votes votes to show it; picking several vote bands uses the lowest one. Neighborhood level only, never a household.",
     "owner_age_bands": [
-      { "key": "u45",   "label": "Under 45", "from": 15, "to": 44 },
-      { "key": "45_64", "label": "45–64",    "from": 45, "to": 64 },
-      { "key": "65p",   "label": "65+",      "from": 65, "to": 200 }
+      {
+        "key": "u45",
+        "label": "Under 45",
+        "from": 15,
+        "to": 44
+      },
+      {
+        "key": "45_64",
+        "label": "45–64",
+        "from": 45,
+        "to": 64
+      },
+      {
+        "key": "65p",
+        "label": "65+",
+        "from": 65,
+        "to": 200
+      }
     ],
     "home_age_bands": [
-      { "key": "pre1940", "label": "Before 1940", "max_year": 1939 },
-      { "key": "1940_79", "label": "1940–79",     "max_year": 1979 },
-      { "key": "1980_99", "label": "1980–99",     "max_year": 1999 },
-      { "key": "2000p",   "label": "2000+",       "max_year": null }
+      {
+        "key": "pre1940",
+        "label": "Before 1940",
+        "max_year": 1939
+      },
+      {
+        "key": "1940_79",
+        "label": "1940–79",
+        "max_year": 1979
+      },
+      {
+        "key": "1980_99",
+        "label": "1980–99",
+        "max_year": 1999
+      },
+      {
+        "key": "2000p",
+        "label": "2000+",
+        "max_year": null
+      }
     ],
     "renter_heavy_share": 0.5,
     "oil_bands": [
-      { "key": "oil25", "label": "25%+ oil", "min": 0.25 },
-      { "key": "oil40", "label": "40%+ oil", "min": 0.40 },
-      { "key": "oil60", "label": "60%+ oil", "min": 0.60 }
+      {
+        "key": "oil25",
+        "label": "25%+ oil",
+        "min": 0.25
+      },
+      {
+        "key": "oil40",
+        "label": "40%+ oil",
+        "min": 0.4
+      },
+      {
+        "key": "oil60",
+        "label": "60%+ oil",
+        "min": 0.6
+      }
     ],
-    "oil_focus": { "label": "PSEG LI · 40%+ oil", "utility": "psegli", "oil_band": "oil40" },
-    "oil_color_breaks": [0.10, 0.25, 0.40, 0.60],
+    "oil_focus": {
+      "label": "PSEG LI · 40%+ oil",
+      "utility": "psegli",
+      "oil_band": "oil40"
+    },
+    "oil_color_breaks": [
+      0.1,
+      0.25,
+      0.4,
+      0.6
+    ],
     "people": {
       "_readme": "Neighborhood facts from the Census ACS, per tract, never per house. Languages: B16001 (detailed) or C16001; a language is listed on the tract card when at least language_list_min_share of residents (age 5+) speak it at home, and the Target filter 'Language at home' keeps tracts where a picked language is at least language_filter_min_share. language_filter_choices = how many languages the filter offers (the most spoken across the turf). Born abroad: B05006 place of birth; the card lists up to birthplace_max countries with at least birthplace_min_share of residents. The race / Hispanic mix (B03002) is shown on the card for background only and is never used in the TurfScore or any filter. names renames a Census label for display. When the detailed table isn't published for tracts the map uses C16001, which groups South Asian and many European languages together as 'Other Indo-European languages'.",
       "language_list_min_share": 0.02,
@@ -42,30 +124,146 @@
       "language_filter_choices": 10,
       "birthplace_min_share": 0.02,
       "birthplace_max": 3,
-      "names": { "Tagalog": "Tagalog/Filipino", "Haitian": "Haitian Creole", "French, Haitian, or Cajun": "French/Haitian Creole", "Other Indo-European languages": "Bengali, Hindi, Urdu, Italian, Greek…", "Other Asian and Pacific Island languages": "Other Asian languages", "Other and unspecified languages": "Other languages" }
+      "names": {
+        "Tagalog": "Tagalog/Filipino",
+        "Haitian": "Haitian Creole",
+        "French, Haitian, or Cajun": "French/Haitian Creole",
+        "Other Indo-European languages": "Bengali, Hindi, Urdu, Italian, Greek…",
+        "Other Asian and Pacific Island languages": "Other Asian languages",
+        "Other and unspecified languages": "Other languages"
+      }
     },
     "retired_bands": [
-      { "key": "ret25", "label": "25%+ retired", "min": 0.25 },
-      { "key": "ret35", "label": "35%+ retired", "min": 0.35 },
-      { "key": "ret45", "label": "45%+ retired", "min": 0.45 }
+      {
+        "key": "ret25",
+        "label": "25%+ retired",
+        "min": 0.25
+      },
+      {
+        "key": "ret35",
+        "label": "35%+ retired",
+        "min": 0.35
+      },
+      {
+        "key": "ret45",
+        "label": "45%+ retired",
+        "min": 0.45
+      }
     ],
     "vote_bands": [
-      { "key": "dem50", "label": "50%+ Democratic", "min": 0.50 },
-      { "key": "dem60", "label": "60%+ Democratic", "min": 0.60 },
-      { "key": "dem70", "label": "70%+ Democratic", "min": 0.70 }
+      {
+        "key": "dem50",
+        "label": "50%+ Democratic",
+        "min": 0.5
+      },
+      {
+        "key": "dem60",
+        "label": "60%+ Democratic",
+        "min": 0.6
+      },
+      {
+        "key": "dem70",
+        "label": "70%+ Democratic",
+        "min": 0.7
+      }
     ],
     "vote_min_votes": 50,
     "size_bands": [
-      { "key": "small",  "label": "Small",  "max_sqft": 1500, "max_rooms": 5.5 },
-      { "key": "medium", "label": "Medium", "max_sqft": 2500, "max_rooms": 7 },
-      { "key": "large",  "label": "Large",  "max_sqft": null, "max_rooms": null }
+      {
+        "key": "small",
+        "label": "Small",
+        "max_sqft": 1500,
+        "max_rooms": 5.5
+      },
+      {
+        "key": "medium",
+        "label": "Medium",
+        "max_sqft": 2500,
+        "max_rooms": 7
+      },
+      {
+        "key": "large",
+        "label": "Large",
+        "max_sqft": null,
+        "max_rooms": null
+      }
     ]
   },
   "min_homes_to_show": 10,
-  "lot": { "small_bonus": 10, "pre1980_bonus": 10, "three_four_penalty": 10, "oil_on_record_bonus": 10 },
+  "lot": {
+    "small_bonus": 10,
+    "pre1980_bonus": 10,
+    "three_four_penalty": 10,
+    "oil_on_record_bonus": 10
+  },
   "li_property_classes": {
     "_readme": "NYS assessment property classes kept for Long Island walk lists, and how many homes (units) each means. 21x one-family (215 has an accessory apartment), 220 two-family, 230 three-family, 24x/25x rural residence / estate, 280-283 multiple residences / residence with incidental commercial use. Seasonal (260) and mobile homes (270) are left out.",
-    "units": { "210": 1, "211": 1, "212": 1, "213": 1, "214": 1, "215": 2, "216": 1, "217": 1, "218": 1, "219": 1, "220": 2, "230": 3, "240": 1, "241": 1, "242": 1, "250": 1, "280": 2, "281": 2, "283": 1 },
-    "business_on_site": ["283"]
+    "units": {
+      "210": 1,
+      "211": 1,
+      "212": 1,
+      "213": 1,
+      "214": 1,
+      "215": 2,
+      "216": 1,
+      "217": 1,
+      "218": 1,
+      "219": 1,
+      "220": 2,
+      "230": 3,
+      "240": 1,
+      "241": 1,
+      "242": 1,
+      "250": 1,
+      "280": 2,
+      "281": 2,
+      "283": 1
+    },
+    "business_on_site": [
+      "283"
+    ]
+  },
+  "personal": {
+    "_readme": "Each rep's personal turf map (\"My fit\"), learned from their own knocks and appointments (supabase/008 rep_tract_results). For every tract trait below, the rep's appointments per 100 doors and closes per appointment are compared with their own overall rates; small samples are pulled toward the team's pattern (smooth_doors, smooth_appts). My fit = TurfScore × the rep's average lift over the tract's traits (clamped to multiplier_min..max). Blend: appointment rate counts appt_weight; close rate counts close_weight, phased in as the rep reaches close_full_at appointments. A rep is still 'learning' until min_doors. Tracts another rep claimed, or knocked within recent_days, are flagged so reps don't double-knock. Reasons show only for traits with at least reason_min_doors doors and a lift beyond reason_lift. bins: edges used to group tracts by oil share (low / some / high), retired share, Democratic vote share (R-lean / mixed / D-lean) and the main non-English language (spoken by at least language_min).",
+    "min_doors": 200,
+    "smooth_doors": 300,
+    "smooth_appts": 6,
+    "appt_weight": 0.6,
+    "close_weight": 0.4,
+    "close_full_at": 20,
+    "multiplier_min": 0.5,
+    "multiplier_max": 1.6,
+    "reason_min_doors": 40,
+    "reason_lift": 1.15,
+    "recent_days": 14,
+    "traits": [
+      "home_age_band",
+      "income_band",
+      "size_band",
+      "oil",
+      "language",
+      "owner_age",
+      "retired",
+      "vote",
+      "utility",
+      "county",
+      "dac",
+      "renter_heavy"
+    ],
+    "bins": {
+      "oil": [
+        0.15,
+        0.4
+      ],
+      "retired": [
+        0.25,
+        0.35
+      ],
+      "vote": [
+        0.4,
+        0.6
+      ],
+      "language_min": 0.15
+    }
   }
 }

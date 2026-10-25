@@ -34,6 +34,24 @@ export function fakeSupabase({ users, reps, statuses, turfStatuses = ['claimed',
       return { ...x, rep: repName(x.rep_id), status: ups[0] ? ups[0].status : 'scheduled', status_at: ups[0] ? ups[0].set_at : null,
         status_rep: ups[0] ? repName(ups[0].rep_id) : null, when_at: moved ? moved.appt_at : x.appt_at };
     }),
+    rep_tract_results: () => {
+      const by = new Map();
+      const row = (rep, tract) => { const k = `${rep}|${tract}`; if (!by.has(k)) by.set(k, { rep, tract, doors: 0, last_knock_at: null, appts: 0, sat: 0, closed: 0, installed: 0, bbls: new Set() }); return by.get(k); };
+      for (const k of tables.knocks) {
+        const r = row(repName(k.rep_id), k.tract);
+        r.bbls.add(k.bbl); r.doors = r.bbls.size;
+        if (!r.last_knock_at || k.knocked_at > r.last_knock_at) r.last_knock_at = k.knocked_at;
+      }
+      for (const a of views.team_appointments()) {
+        if (!a.tract) continue;
+        const r = row(a.rep, a.tract);
+        r.appts++;
+        if (['sat', 'closed', 'installed'].includes(a.status)) r.sat++;
+        if (['closed', 'installed'].includes(a.status)) r.closed++;
+        if (a.status === 'installed') r.installed++;
+      }
+      return [...by.values()].map(({ bbls, ...r }) => r);
+    },
     appointment_history: () => tables.appointment_updates.map((u) => ({ ...u, rep: repName(u.rep_id) })).sort((a, b) => (a.set_at < b.set_at ? 1 : -1)),
     tract_activity: () => {
       const tracts = new Set([...tables.knocks, ...tables.notes, ...tables.turf_log].map((x) => x.tract).filter(Boolean));
