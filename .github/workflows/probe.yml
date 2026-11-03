@@ -1,0 +1,36 @@
+# TEMPORARY: checks the HMDA data format from GitHub's network. Removed after use.
+name: Probe
+on:
+  push:
+    branches: [claude/code-review-testing-q7elwy]
+    paths: [.github/workflows/probe.yml]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: HMDA filtered CSV for Nassau
+        run: |
+          set -x
+          for y in 2024 2023; do
+            curl -sS -D h.txt -o n.csv "https://ffiec.cfpb.gov/v2/data-browser-api/view/csv?years=$y&counties=36059&actions_taken=1,2,3&loan_purposes=1,31,32&dwelling_categories=Single%20Family%20(1-4%20Units):Site-Built" -w "\nHTTP %{http_code} size %{size_download} time %{time_total}\n" || true
+            head -c 400 h.txt; echo
+            head -1 n.csv | tr ',' '\n' | nl | head -110
+            sed -n 2,3p n.csv
+            wc -l n.csv
+          done
+      - name: column stats
+        run: |
+          python3 - <<'PY'
+          import csv, collections
+          r = csv.DictReader(open('n.csv'))
+          c = collections.Counter(); tr = set(); occ = collections.Counter(); den = collections.Counter(); units = collections.Counter()
+          for row in r:
+              c[row.get('action_taken')] += 1; tr.add(row.get('census_tract')); occ[row.get('occupancy_type')] += 1
+              den[row.get('denial_reason-1')] += 1; units[row.get('total_units')] += 1
+          print('actions', c); print('tracts', len(tr), sorted(tr)[:5]); print('occupancy', occ); print('denial1', den); print('units', units)
+          PY
+      - name: Kings + Queens + Suffolk sizes
+        run: |
+          for c in 36047 36081 36103; do
+            curl -sS -o x.csv "https://ffiec.cfpb.gov/v2/data-browser-api/view/csv?years=2024&counties=$c&actions_taken=1,2,3&loan_purposes=1,31,32&dwelling_categories=Single%20Family%20(1-4%20Units):Site-Built" -w "$c HTTP %{http_code} size %{size_download} time %{time_total}\n"; wc -l x.csv
+          done
