@@ -8,29 +8,40 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: HMDA filtered CSV for Nassau
+      - name: HMDA queries
         run: |
-          set -x
-          for y in 2024 2023; do
-            curl -sS -D h.txt -o n.csv "https://ffiec.cfpb.gov/v2/data-browser-api/view/csv?years=$y&counties=36059&actions_taken=1,2,3&loan_purposes=1,31,32&dwelling_categories=Single%20Family%20(1-4%20Units):Site-Built" -w "\nHTTP %{http_code} size %{size_download} time %{time_total}\n" || true
-            head -c 400 h.txt; echo
-            head -1 n.csv | tr ',' '\n' | nl | head -110
-            sed -n 2,3p n.csv
-            wc -l n.csv
+          B="https://ffiec.cfpb.gov/v2/data-browser-api/view/csv"
+          for q in "years=2024&counties=36059" \
+                   "years=2024&counties=36059&actions_taken=1,2,3" \
+                   "years=2024&counties=36059&actions_taken=1,2,3&loan_purposes=1,31,32" \
+                   "years=2024&counties=36059&actions_taken=1,2,3&loan_purposes=1,31,32&dwelling_categories=Single%20Family%20(1-4%20Units):Site-Built" \
+                   "years=2024&counties=36059&actions_taken=1,2,3&loan_purposes=1,31,32&dwelling_categories=Single%20Family%20%281-4%20Units%29%3ASite-Built"; do
+            curl -sS --compressed -o out.csv "$B?$q" -w "$q -> HTTP %{http_code} size %{size_download} time %{time_total}\n" || true
+            head -c 300 out.csv; echo; echo ---
           done
+          curl -sS --compressed -o n.csv "$B?years=2024&counties=36059&actions_taken=1,2,3" -w "HTTP %{http_code}\n"
+          head -1 n.csv | tr ',' '\n' | nl | head -110
+          sed -n 2,2p n.csv
+          wc -l n.csv
       - name: column stats
         run: |
           python3 - <<'PY'
           import csv, collections
           r = csv.DictReader(open('n.csv'))
-          c = collections.Counter(); tr = set(); occ = collections.Counter(); den = collections.Counter(); units = collections.Counter()
+          C = {k: collections.Counter() for k in ['action_taken','loan_purpose','occupancy_type','derived_dwelling_category','total_units','denial_reason-1','denial_reason-2','lien_status']}
+          tr = collections.Counter()
           for row in r:
-              c[row.get('action_taken')] += 1; tr.add(row.get('census_tract')); occ[row.get('occupancy_type')] += 1
-              den[row.get('denial_reason-1')] += 1; units[row.get('total_units')] += 1
-          print('actions', c); print('tracts', len(tr), sorted(tr)[:5]); print('occupancy', occ); print('denial1', den); print('units', units)
+              for k in C: C[k][row.get(k)] += 1
+              tr[row.get('census_tract')] += 1
+          for k, v in C.items(): print(k, v.most_common(12))
+          print('tracts', len(tr), tr.most_common(3), 'median apps', sorted(tr.values())[len(tr)//2])
           PY
-      - name: Kings + Queens + Suffolk sizes
+      - name: Other county sizes
         run: |
           for c in 36047 36081 36103; do
-            curl -sS -o x.csv "https://ffiec.cfpb.gov/v2/data-browser-api/view/csv?years=2024&counties=$c&actions_taken=1,2,3&loan_purposes=1,31,32&dwelling_categories=Single%20Family%20(1-4%20Units):Site-Built" -w "$c HTTP %{http_code} size %{size_download} time %{time_total}\n"; wc -l x.csv
+            curl -sS --compressed -o x.csv "https://ffiec.cfpb.gov/v2/data-browser-api/view/csv?years=2024&counties=$c&actions_taken=1,2,3" -w "$c HTTP %{http_code} size %{size_download} time %{time_total}\n"; wc -l x.csv
           done
+      - name: Census B25081 / B25077 labels
+        run: |
+          curl -sS https://api.census.gov/data/2024/acs/acs5/groups/B25081.json | python3 -c "import json,sys; d=json.load(sys.stdin)['variables']; [print(k, v['label']) for k, v in sorted(d.items()) if k.endswith('E')]"
+          curl -sS https://api.census.gov/data/2024/acs/acs5/groups/B25077.json | python3 -c "import json,sys; d=json.load(sys.stdin)['variables']; [print(k, v['label']) for k, v in sorted(d.items()) if k.endswith('E')]"
