@@ -119,6 +119,24 @@
     "width": 4,
     "credit": "Suffolk County Board of Elections, General Election 2024 results by election district (via OpenElections); Suffolk County election district map"
   },
+  "hmda": {
+    "note": "Home Mortgage Disclosure Act data: every mortgage application in the US, with its census tract and whether it was approved or denied (and why). Public domain, published by the CFPB/FFIEC. Used only as tract counts for the Financing-ready filter: a neighborhood stand-in for credit, never anyone's score. The API allows two filters, so owner-occupied 1-4 family and non-business loans are filtered in m1-ingest/hmda.js. The newest year with real data is used.",
+    "base": "https://ffiec.cfpb.gov/v2/data-browser-api/view/csv",
+    "years_to_try": [
+      2025,
+      2024
+    ],
+    "loan_purposes": "1,31,32",
+    "total_units": [
+      "1",
+      "2",
+      "3",
+      "4"
+    ],
+    "credit_denial_code": "3",
+    "min_rows_per_county": 1000,
+    "credit": "CFPB / FFIEC, Home Mortgage Disclosure Act data (public domain)"
+  },
   "geocoder": {
     "note": "Address search in the map app: New York State's official address locator (NYS ITS), free, no key, covers NYC and Long Island. The phone sends the typed address straight to it. search_extent keeps matches near the turf (lon/lat box; it must carry spatialReference 4326 or the locator reads it in its own UTM coordinates and finds nothing); min_score drops weak guesses.",
     "url": "https://gisservices.its.ny.gov/arcgis/rest/services/Locators/Street_and_Address_Composite/GeocodeServer/findAddressCandidates",

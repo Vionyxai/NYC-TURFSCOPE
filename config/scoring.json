@@ -265,5 +265,44 @@
       ],
       "language_min": 0.15
     }
+  },
+  "financing": {
+    "_readme": "Financing-ready (Low / Medium / High): a neighborhood stand-in for credit, since real credit scores by area aren't free and individual scores are off-limits. For each tract: the share of mortgage applications approved and the share denied for credit history (HMDA, owner-occupied 1-4 family homes), and the share of owner homes with no mortgage (ACS B25081). Rates are pulled toward the county's until a tract has min_apps applications. Each part becomes a turf-wide percentile (credit denials counted in reverse), weighted together, and the result split into levels (thirds by default). A tract needs at least min_parts parts. Shown as a Target filter and a card line only: it is NOT part of the TurfScore.",
+    "min_apps": 20,
+    "min_parts": 2,
+    "weights": {
+      "approval": 1,
+      "credit_denials": 1,
+      "paid_off": 1
+    },
+    "levels": [
+      {
+        "key": "low",
+        "label": "Low",
+        "min": 0
+      },
+      {
+        "key": "medium",
+        "label": "Medium",
+        "min": 0.3333
+      },
+      {
+        "key": "high",
+        "label": "High",
+        "min": 0.6667
+      }
+    ],
+    "bands": [
+      {
+        "key": "fin_med",
+        "label": "Medium or higher",
+        "level": "medium"
+      },
+      {
+        "key": "fin_high",
+        "label": "High",
+        "level": "high"
+      }
+    ]
   }
 }

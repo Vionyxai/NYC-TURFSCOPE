@@ -215,6 +215,7 @@
   <div class="group"><h4>Homeowner age (rough estimate) — more than usual</h4><div class="row" id="tgAge"></div></div>
   <div class="group"><h4>House size</h4><div class="row" id="tgSize"></div></div>
   <div class="group" id="tgVoteGroup"><h4 id="tgVoteTitle">Voting (presidential, neighborhood)</h4><div class="row" id="tgVote"></div></div>
+  <div class="group" id="tgFinGroup"><h4 id="tgFinTitle">Financing-ready (mortgage approvals + paid-off homes)</h4><div class="row" id="tgFin"></div><div class="meta">A neighborhood stand-in for credit, from public mortgage records. Not anyone's credit score.</div></div>
   <div class="group" id="tgRetGroup"><h4>Retired households (get pension / 401k income)</h4><div class="row" id="tgRet"></div></div>
   <div class="group" id="tgLangGroup"><h4 id="tgLangTitle">Language at home</h4><div class="row" id="tgLang"></div></div>
   <button class="btn" id="targetDone">Show tracts</button>
@@ -277,7 +278,7 @@
   const money = (x) => (x == null ? '—' : '$' + Math.round(x / 1000) + 'k');
 
   let placingPin = false;                                      // true after "Tap a spot on the map"
-  const state = { util: 'all', dac: false, mine: false, min: 0, oils: new Set(), colorBy: 'score', bestSort: 'score', bestWorked: false, incomes: new Set(), homes: new Set(), ages: new Set(), sizes: new Set(), langs: new Set(), rets: new Set(), votes: new Set() };
+  const state = { util: 'all', dac: false, mine: false, min: 0, oils: new Set(), colorBy: 'score', bestSort: 'score', bestWorked: false, incomes: new Set(), homes: new Set(), ages: new Set(), sizes: new Set(), langs: new Set(), rets: new Set(), votes: new Set(), fins: new Set() };
   let data, summary, walkIndex = {}, layer, currentList = null;
 
   const map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([40.72, -73.75], 11);
@@ -361,6 +362,24 @@
   // Retired households: several picks = the lowest one (like oil).
   TG.retired_bands = TG.retired_bands || [];
   const retMin = () => Math.min(...[...state.rets].map((k) => (TG.retired_bands.find((b) => b.key === k) || { min: 0 }).min));
+  // Financing-ready: several picks = the lowest level picked (Medium or higher + High = Medium or higher).
+  TG.financing_bands = TG.financing_bands || [];
+  TG.financing_levels = TG.financing_levels || [];
+  const finRank = (lvl) => TG.financing_levels.findIndex((l) => l.key === lvl);
+  const finMin = () => Math.min(...[...state.fins].map((k) => finRank((TG.financing_bands.find((b) => b.key === k) || {}).level)));
+  const finLabel = (lvl) => (TG.financing_levels.find((l) => l.key === lvl) || {}).label || lvl;
+  function financingLine(p) {
+    const f = p.financing;
+    if (!f) return '';
+    const bits = [];
+    if (f.approval != null) bits.push(`${pct(f.approval)} of mortgage applications approved`);
+    if (f.credit_denials != null) bits.push(`${pct(f.credit_denials)} denied for credit history`);
+    if (f.paid_off != null) bits.push(`${pct(f.paid_off)} of owners have no mortgage`);
+    if (f.home_value) bits.push(`median home value ${money(f.home_value)}`);
+    const color = { high: '#15803d', medium: '#ca8a04', low: '#b91c1c' }[f.level] || 'inherit';
+    return `<div class="kv one" style="margin-top:6px"><div><span>Financing-ready (credit stand-in)</span><b style="color:${color}">${esc(finLabel(f.level))}</b> <small class="meta">vs the rest of the turf</small>
+      <div class="meta">${esc(bits.join(' · '))}${f.apps != null ? ` · ${f.apps.toLocaleString()} applications${f.year ? ` in ${f.year}` : ''}${f.apps < (TG.financing_min_apps ?? 20) ? ', few, so it leans on the county' : ''}` : ''}</div></div></div>`;
+  }
   // Language at home: any picked language spoken by at least the configured share of residents.
   TG.languages = TG.languages || [];
   const LANG_MIN = TG.language_min_share ?? 0.15;
@@ -533,6 +552,7 @@
     (!state.sizes.size || state.sizes.has(p.size_band)) &&
     (!state.langs.size || langOK(p)) &&
     (!state.votes.size || (p.vote && p.vote.dem >= voteMin())) &&
+    (!state.fins.size || (p.financing && finRank(p.financing.level) >= finMin())) &&
     (!state.rets.size || (p.retired && p.retired.retirement_income != null && p.retired.retirement_income >= retMin())) &&
     (!state.oils.size || (oilOf(p) != null && oilOf(p) >= oilMin())) &&
     p.score >= state.min &&
@@ -639,6 +659,7 @@
         <div><span>House size</span>${p.size_band ? `${esc(sizeLabel(p.size_band))} <small class="meta">${p.size_basis === 'sqft' ? `median ${Math.round(p.size_value).toLocaleString()} sq ft` : `median ${p.size_value} rooms`}</small>` : '—'}</div>
         <div><span>Heat: oil / gas / elec</span>${pct(fuel.oil)} / ${pct(fuel.gas)} / ${pct(fuel.electric)}</div>
       </div>
+      ${financingLine(p)}
       ${searchHit && searchHit.geoid === p.geoid ? `<div class="found"><div>📍 <b>${esc(searchHit.address)}</b> is in this tract</div>${hasList ? '<button class="btn" id="findHouseBtn">Find this house in the walk list</button>' : ''}</div>` : ''}
       ${peopleBlock(p)}
       <div class="bars">
@@ -1105,6 +1126,7 @@
     ['tgOil', 'oils', TG.oil_bands],
     ['tgLang', 'langs', TG.languages.map((n) => ({ key: n, label: n }))],
     ['tgRet', 'rets', TG.retired_bands],
+    ['tgFin', 'fins', TG.financing_bands],
     ['tgVote', 'votes', TG.vote_bands],
   ];
   const voteYearsText = Object.entries(TG.vote_years || {}).reduce((m, [c, y]) => ((m[y] = m[y] || []).push(c), m), {});
@@ -1112,12 +1134,14 @@
     ? Object.entries(voteYearsText).sort((a, b) => b[0] - a[0]).map(([y, cs]) => `${y}: ${cs.join(', ')}`).join(' · ') : TG.vote_year})`;
   if (!TG.vote_bands.length || !TG.vote_year) document.getElementById('tgVoteGroup').style.display = 'none';
   if (!TG.retired_bands.length) document.getElementById('tgRetGroup').style.display = 'none';
+  if (!TG.financing_bands.length) document.getElementById('tgFinGroup').style.display = 'none';
+  else if (TG.financing_year) document.getElementById('tgFinTitle').textContent = `Financing-ready (${TG.financing_year} mortgage approvals + paid-off homes)`;
   document.getElementById('tgLangTitle').textContent = `Language at home (${Math.round(LANG_MIN * 100)}%+ of residents)`;
   if (!TG.languages.length) document.getElementById('tgLangGroup').style.display = 'none';
   const countMatches = () => data.features.filter((f) => passes(f.properties)).length;
   function paintTarget() {
     for (const [id, k] of groups) document.querySelectorAll(`#${id} .chip`).forEach((b) => b.classList.toggle('on', state[k].has(b.dataset.k)));
-    const n = state.incomes.size + state.homes.size + state.ages.size + state.sizes.size + state.oils.size + state.langs.size + state.rets.size + state.votes.size;
+    const n = state.incomes.size + state.homes.size + state.ages.size + state.sizes.size + state.oils.size + state.langs.size + state.rets.size + state.votes.size + state.fins.size;
     document.querySelectorAll('#colorBy button').forEach((b) => b.classList.toggle('on', b.dataset.c === state.colorBy));
     paintFitAs();
     paintLegend();
@@ -1153,7 +1177,7 @@
   }
   document.getElementById('targetBtn').onclick = () => { paintTarget(); document.getElementById('sheet').classList.remove('open'); document.getElementById('targetSheet').classList.add('open'); };
   document.getElementById('targetDone').onclick = () => document.getElementById('targetSheet').classList.remove('open');
-  document.getElementById('targetClear').onclick = () => { state.incomes.clear(); state.homes.clear(); state.ages.clear(); state.sizes.clear(); state.oils.clear(); state.langs.clear(); state.rets.clear(); state.votes.clear(); paintTarget(); render(); };
+  document.getElementById('targetClear').onclick = () => { state.incomes.clear(); state.homes.clear(); state.ages.clear(); state.sizes.clear(); state.oils.clear(); state.langs.clear(); state.rets.clear(); state.votes.clear(); state.fins.clear(); paintTarget(); render(); };
   // One tap: PSEG LI + high-oil tracts, colored by oil, best list sorted by most oil.
   const FOCUS = TG.oil_focus;
   const focusBtn = document.getElementById('oilFocus');

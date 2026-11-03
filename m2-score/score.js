@@ -226,3 +226,58 @@ export function voteShares(v, minVotes = 50) {
   if (!v || !(v.total >= minVotes)) return null;
   return { dem: round(v.dem / v.total), rep: round(v.rep / v.total), votes: Math.round(v.total) };
 }
+
+// Financing-ready: a neighborhood stand-in for credit. Nobody's credit score is ever used.
+// h: this tract's HMDA tally { apps, approved, credit_denied } (decided mortgage applications for
+// owner-occupied 1–4 family homes); county: the same tally for the whole county. Rates are pulled
+// toward the county's until a tract has a decent number of applications (min_apps).
+// mort: B25081 codes { total, without } for the share of owner homes with no mortgage.
+export function financingParts(h, county, v, mort, cfg = {}) {
+  const k = cfg.min_apps ?? 20;
+  const apps = (h && h.apps) || 0;
+  const prior = (x) => (county && county.apps > 0 ? county[x] / county.apps : null);
+  const rate = (x) => {
+    const p = prior(x);
+    if (p == null) return apps > 0 ? h[x] / apps : null;
+    return ((h ? h[x] : 0) + k * p) / (apps + k);
+  };
+  const tot = mort ? v[mort.total] : null;
+  return {
+    apps,
+    approval: round(rate('approved'), 3),
+    credit_denials: round(rate('credit_denied'), 3),
+    paid_off: tot > 0 && v[mort.without] != null ? round(v[mort.without] / tot, 3) : null,
+    home_value: v.B25077_001E ?? null,
+  };
+}
+
+// Percentile of each value among the non-missing ones (0–1; ties share the middle).
+function percentiles(xs) {
+  const sorted = xs.filter((x) => x != null).sort((a, b) => a - b);
+  const n = sorted.length;
+  const below = (x) => { let lo = 0, hi = n; while (lo < hi) { const m = (lo + hi) >> 1; if (sorted[m] < x) lo = m + 1; else hi = m; } return lo; };
+  const atOrBelow = (x) => { let lo = 0, hi = n; while (lo < hi) { const m = (lo + hi) >> 1; if (sorted[m] <= x) lo = m + 1; else hi = m; } return lo; };
+  return xs.map((x) => (x == null || !n ? null : (below(x) + atOrBelow(x)) / 2 / n));
+}
+
+// Low / Medium / High across the whole turf: average the percentiles of approval rate (higher is
+// better), credit-history denials (lower is better) and paid-off homes (higher is better), then split
+// that average into the configured levels (thirds by default). Returns one { level, index } per input.
+export function financingLevels(parts, cfg = {}) {
+  const w = cfg.weights || { approval: 1, credit_denials: 1, paid_off: 1 };
+  const flip = { credit_denials: true };
+  const cols = Object.fromEntries(Object.keys(w).map((k) => [k, percentiles(parts.map((p) => (p ? p[k] : null)))]));
+  const idx = parts.map((_, i) => {
+    let s = 0, ws = 0, n = 0;
+    for (const [k, wk] of Object.entries(w)) {
+      const q = cols[k][i];
+      if (q == null || !wk) continue;
+      s += wk * (flip[k] ? 1 - q : q); ws += wk; n++;
+    }
+    return n >= (cfg.min_parts ?? 2) ? s / ws : null;
+  });
+  const rank = percentiles(idx);
+  const levels = cfg.levels || [{ key: 'low', min: 0 }, { key: 'medium', min: 1 / 3 }, { key: 'high', min: 2 / 3 }];
+  return idx.map((x, i) => (x == null ? { level: null, index: null }
+    : { level: [...levels].reverse().find((l) => rank[i] >= l.min).key, index: round(x, 3) }));
+}

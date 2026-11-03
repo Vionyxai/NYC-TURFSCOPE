@@ -9,6 +9,7 @@ import { runLiParcels } from './li_parcels.js';
 import { runElections } from './elections.js';
 import { runElectionsNyc } from './elections_nyc.js';
 import { runElectionsSuffolk } from './elections_suffolk.js';
+import { runHmda } from './hmda.js';
 
 const steps = [
   ['ACS', runACS, true],
@@ -21,6 +22,7 @@ const steps = [
   ['Elections', runElections, false],
   ['Elections NYC 2024', runElectionsNyc, false],
   ['Elections Suffolk 2024', runElectionsSuffolk, false],
+  ['HMDA mortgages', runHmda, false],
 ];
 
 log(`Ingest · active counties: ${activeCounties().map((c) => c.name).join(', ')}`);

@@ -24,6 +24,9 @@ export const RACE_GROUPS = {
 export const RACE_VARS = ['B03002_001E', ...Object.values(RACE_GROUPS).flat().map((c) => `B03002_${c}E`)];
 // Retired households: households with retirement income (pension, 401k/IRA payouts) and with Social Security.
 export const RETIRED_VARS = ['B19059_001E', 'B19059_002E', 'B19055_001E', 'B19055_002E'];
+// Financing-ready: owner homes in total and without a mortgage (paid off), and median home value.
+export const MORTGAGE_VARS = ['B25081_001E', 'B25081_009E', 'B25077_001E'];
+export const MORTGAGE = { total: 'B25081_001E', without: 'B25081_009E' };
 
 export const MAIN_VARS = [
   'B19013_001E',                                   // median household income
@@ -128,7 +131,7 @@ export async function runACS() {
   const rows = new Map();
 
   for (const c of activeCounties()) {
-    for (const vars of [MAIN_VARS, ageVars, [...RACE_VARS, ...RETIRED_VARS]]) {   // the API takes at most 50 variables per request (NAME counts)
+    for (const vars of [MAIN_VARS, ageVars, [...RACE_VARS, ...RETIRED_VARS, ...MORTGAGE_VARS]]) {   // the API takes at most 50 variables per request (NAME counts)
       const url = `${src.base}/${year}/acs/acs5?get=NAME,${vars.join(',')}&for=tract:*&in=state:${state_fips}&in=county:${c.fips}${key}`;
       const data = rowsToObjects(await censusJSON(url));
       for (const r of data) {

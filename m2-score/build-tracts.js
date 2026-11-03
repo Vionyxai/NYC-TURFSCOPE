@@ -3,7 +3,8 @@ import {
   config, readJSON, readJSONIfExists, writeJSON, raw, out, log, warn, round, activeCounties,
 } from '../lib/util.js';
 import { pointInFeatureCollection, roundGeometry, shareInside, featureLocator } from '../lib/geo.js';
-import { tractMetrics, scoreTract, incomeBand, dacFor2020, lotUtility, sizeBand, homeAgeBand, lotBusiness, tractPeople, votesByTract, voteShares } from './score.js';
+import { tractMetrics, scoreTract, incomeBand, dacFor2020, lotUtility, sizeBand, homeAgeBand, lotBusiness, tractPeople, votesByTract, voteShares, financingParts, financingLevels } from './score.js';
+import { MORTGAGE } from '../m1-ingest/acs.js';
 
 const scoring = config('scoring.json');
 const util = config('utilities.json');
@@ -21,6 +22,14 @@ const dac10 = readJSONIfExists(raw('dac_2010.json'));
 const rel = readJSONIfExists(raw('tract_rel.json'));
 const bizByBbl = readJSONIfExists(raw('business_by_bbl.json')) || {};
 if (!dac10) warn('No DAC data — incentive factor will be 0 for DAC-based utilities.');
+// Financing-ready: mortgage applications per tract (HMDA), with county totals to steady small tracts.
+const hmda = readJSONIfExists(raw('hmda_tracts.json'));
+const hmdaCounty = {};
+for (const [g, t] of Object.entries(hmda?.tracts || {})) {
+  const c = hmdaCounty[g.slice(2, 5)] || (hmdaCounty[g.slice(2, 5)] = { apps: 0, approved: 0, credit_denied: 0 });
+  c.apps += t.apps; c.approved += t.approved; c.credit_denied += t.credit_denied;
+}
+if (!hmda) warn('No mortgage data (data/raw/hmda_tracts.json) — the map will skip Financing-ready.');
 const muniCfg = util.municipal_electric || { places: [] };
 const muniPlaces = (readJSONIfExists(raw('muni_places.json'))?.features || [])
   .map((f) => ({ geometry: f.geometry, label: muniCfg.places.find((p) => p.name === f.properties?.NAME)?.label || f.properties?.NAME }))
@@ -162,6 +171,9 @@ for (const f of geo.features) {
     for (const [n, x] of people.languages) langSpeakers.set(n, (langSpeakers.get(n) || 0) + x * tot5);
   }
 
+  // HMDA uses this tract's own id (it's on 2020 tracts); ACS parts come from wherever this tract's ACS came from.
+  const financing = financingParts(hmda?.tracts[geoid], hmdaCounty[county], a.v, MORTGAGE, scoring.financing);
+
   Object.assign(m, dacFor2020(geoid, relIndex, dac10));
   const s = scoreTract(m, utility, scoring);
 
@@ -197,6 +209,7 @@ for (const f of geo.features) {
       size_value,
       ...people,
       fuel: m.fuel ? Object.fromEntries(Object.entries(m.fuel).map(([k, v]) => [k, round(v)])) : null,
+      financing,
       dac: m.dac,
       dac_share: m.dac_share,
       score: s.score,
@@ -231,6 +244,18 @@ if (voteSets.length) {
   log(`Voting · ${Object.entries(byYear).map(([y, n]) => `${y}: ${n} tracts`).join(' · ')} of ${features.length}`);
 } else warn('No election data (data/raw/precincts*.json) — the map will skip voting.');
 
+// Financing-ready level across the whole turf (needs every tract's parts first).
+const finLevels = financingLevels(features.map((f) => f.properties.financing), scoring.financing);
+features.forEach((f, i) => {
+  const fin = f.properties.financing;
+  f.properties.financing = finLevels[i].level ? { ...fin, level: finLevels[i].level, year: hmda ? hmda.year : null } : null;
+});
+{
+  const n = {};
+  for (const f of features) { const k = f.properties.financing ? f.properties.financing.level : 'none'; n[k] = (n[k] || 0) + 1; }
+  log(`Financing-ready · ${Object.entries(n).map(([k, x]) => `${k} ${x}`).join(' · ')}`);
+}
+
 features.sort((x, y) => y.properties.score - x.properties.score);
 writeJSON(out('tracts.geojson'), { type: 'FeatureCollection', features });
 
@@ -257,7 +282,11 @@ writeJSON(out('summary.json'), {
     retired_bands: scoring.targeting?.retired_bands || [],
     vote_bands: scoring.targeting?.vote_bands || [],
     vote_year: voteSets.length ? voteSets[0].year : null,
-    vote_years: voteYears,                                 // county → election year used, e.g. { Brooklyn: 2024, Suffolk: 2020 }
+    vote_years: voteYears,
+    financing_levels: (scoring.financing?.levels || []).map(({ key, label }) => ({ key, label })),
+    financing_bands: hmda ? scoring.financing?.bands || [] : [],
+    financing_year: hmda ? hmda.year : null,
+    financing_min_apps: scoring.financing?.min_apps ?? 20,                                 // county → election year used, e.g. { Brooklyn: 2024, Suffolk: 2020 }
     // Languages a rep can target, most spoken across the turf first.
     languages: [...langSpeakers].filter(([n]) => !/^Other\b/i.test(n)).sort((x, y) => y[1] - x[1])
       .slice(0, peopleCfg.language_filter_choices ?? 10).map(([n]) => n),

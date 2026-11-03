@@ -6,10 +6,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { ROOT } from '../lib/util.js';
-import { pre1980Codes, languageCodes, birthplaceCodes, MAIN_VARS, RACE_VARS, RETIRED_VARS } from '../m1-ingest/acs.js';
+import { pre1980Codes, languageCodes, birthplaceCodes, MAIN_VARS, RACE_VARS, RETIRED_VARS, MORTGAGE_VARS, MORTGAGE } from '../m1-ingest/acs.js';
+import { tallyHmda } from '../m1-ingest/hmda.js';
 import { plutoTractGeoid } from '../m1-ingest/pluto.js';
 import { isDac, detectDacFields, parseRelationship } from '../m1-ingest/dac.js';
-import { incomeBand, dacFor2020, lotUtility, lotScore, ownerAgeShares, sizeBand, homeAgeBand, lotBusiness, tractPeople, shortName, votesByTract, voteShares } from '../m2-score/score.js';
+import { incomeBand, dacFor2020, lotUtility, lotScore, ownerAgeShares, sizeBand, homeAgeBand, lotBusiness, tractPeople, shortName, votesByTract, voteShares, financingParts, financingLevels } from '../m2-score/score.js';
 import { addrKey, compareLots, packWalk, unpackWalk, tractLocator } from '../m4-walklists/build.js';
 import { fuelKey, parcelToLot, statRange } from '../m1-ingest/li_parcels.js';
 import { featureSplitter, precinctFromFeature } from '../m1-ingest/elections.js';
@@ -98,7 +99,7 @@ t('who lives here: languages, born abroad, race mix (display only)', () => {
   const none = tractPeople({}, {}, {});
   assert.equal(none.race, null); assert.equal(none.languages, null); assert.equal(none.born_abroad, null);
   assert.ok(RACE_VARS.includes('B03002_012E'));
-  for (const vars of [MAIN_VARS, [...RACE_VARS, ...RETIRED_VARS]]) assert.ok(vars.length + 1 <= 50, `Census allows 50 variables per request (with NAME), got ${vars.length + 1}`);
+  for (const vars of [MAIN_VARS, [...RACE_VARS, ...RETIRED_VARS, ...MORTGAGE_VARS]]) assert.ok(vars.length + 1 <= 50, `Census allows 50 variables per request (with NAME), got ${vars.length + 1}`);
 });
 t('elections: stream features out of a huge file, keep our counties, split votes over tracts', () => {
   const box = (x0, y0, x1, y1) => ({ type: 'Polygon', coordinates: [[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]] });
@@ -204,6 +205,43 @@ t('My fit: each rep learns which turf works for them; small samples stay put; ne
   const recent = recentOthers([{ rep: 'Kai', tract: 'T', doors: 42, last_knock_at: '2026-10-22T15:00:00Z' }, { rep: 'Gio', tract: 'T', doors: 9, last_knock_at: '2026-09-01T15:00:00Z' },
     { rep: 'Matt', tract: 'T', doors: 5, last_knock_at: '2026-10-24T15:00:00Z' }], 'T', 'Matt', now, cfg.recent_days);
   assert.deepEqual([...recent.map((r) => `${r.rep}:${r.doors}`)], ['Kai:42']);                // not me, not 7 weeks ago
+});
+t('Financing-ready: HMDA tally keeps owner-occupied 1–4 family loans and counts credit-history denials', () => {
+  const head = 'activity_year,census_tract,derived_dwelling_category,action_taken,loan_purpose,occupancy_type,total_units,business_or_commercial_purpose,reverse_mortgage,denial_reason-1,denial_reason-2,denial_reason-3,denial_reason-4';
+  const row = (tract, act, { occ = 1, units = '1', biz = 2, rev = 2, d = ['10', '', '', ''] } = {}) => [2024, tract, '"Single Family (1-4 Units):Site-Built"', act, 1, occ, units, biz, rev, ...d].join(',');
+  const text = [head,
+    row('36059404902', 1), row('36059404902', 2), row('36059404902', 3, { d: ['1', '3', '', ''] }),   // credit history as a 2nd reason counts
+    row('36059404902', 3, { d: ['1', '', '', ''] }),          // denied for debt-to-income: not a credit denial
+    row('36059404902', 1, { occ: 3 }),                        // investor: skipped
+    row('36059404902', 1, { units: '5-24' }),                 // apartment building: skipped
+    row('36059404902', 1, { biz: 1 }), row('36059404902', 1, { rev: 1 }),   // business loan, reverse mortgage: skipped
+    row('NA', 1), row('36059404903', 3, { d: ['3', '', '', ''] }),
+  ].join('\n');
+  const r = tallyHmda(text, { credit_denial_code: '3' });
+  assert.equal(r.rows, 5);
+  assert.deepEqual({ ...r.tracts['36059404902'] }, { apps: 4, approved: 2, credit_denied: 1 });
+  assert.deepEqual({ ...r.tracts['36059404903'] }, { apps: 1, approved: 0, credit_denied: 1 });
+  assert.throws(() => tallyHmda('a,b\n1,2'), /no census_tract column/);
+});
+t('Financing-ready: small tracts lean on the county; levels split the turf; not enough data → no level', () => {
+  const cfg = readCfg('scoring.json').financing;
+  const county = { apps: 1000, approved: 800, credit_denied: 50 };
+  const v = { B25081_001E: 100, B25081_009E: 40, B25077_001E: 650000 };
+  const big = financingParts({ apps: 400, approved: 380, credit_denied: 4 }, county, v, MORTGAGE, cfg);
+  const tiny = financingParts({ apps: 2, approved: 2, credit_denied: 0 }, county, v, MORTGAGE, cfg);
+  assert.ok(big.approval > 0.93, 'lots of applications: its own rate');
+  assert.ok(tiny.approval < 0.83, '2 for 2 barely moves it off the county rate (80%)');
+  assert.equal(big.paid_off, 0.4);
+  assert.equal(big.home_value, 650000);
+  assert.equal(financingParts(null, null, {}, MORTGAGE, cfg).approval, null);
+  const L = financingLevels([
+    { approval: 0.95, credit_denials: 0.01, paid_off: 0.5 }, { approval: 0.8, credit_denials: 0.05, paid_off: 0.35 },
+    { approval: 0.6, credit_denials: 0.2, paid_off: 0.1 }, { approval: 0.9, credit_denials: null, paid_off: null }, null,
+  ], cfg);
+  assert.deepEqual(L.map((x) => x.level), ['high', 'medium', 'low', null, null]);
+  assert.deepEqual(cfg.bands.map((b) => b.level), ['medium', 'high']);
+  assert.ok(cfg.bands.every((b) => cfg.levels.some((l) => l.key === b.level)), 'every filter band points at a real level');
+  assert.ok(!('financing' in readCfg('scoring.json').weights), 'Financing-ready is a filter, never part of the TurfScore');
 });
 t('PLUTO bct2020 → GEOID', () => {
   assert.equal(plutoTractGeoid('4012300'), '36081012300');
@@ -415,12 +453,13 @@ const acsV = (o) => ({
   B03002_001E: 2000, B03002_003E: 800, B03002_004E: 200, B03002_006E: 400, B03002_012E: 600,
   B16001_001E: 1900, B16001_002E: 1100, B16001_003E: 400, B16001_005E: 100, B16001_066E: 300, B16001_068E: 150, B16001_075E: 100, B16001_077E: 50,
   B05006_001E: 700, B05006_145E: 200, B05006_172E: 150, B05006_051E: 60,
-  B19059_001E: 1000, B19059_002E: 380, B19055_001E: 1000, B19055_002E: 450, ...o,
+  B19059_001E: 1000, B19059_002E: 380, B19055_001E: 1000, B19055_002E: 450,
+  B25081_001E: 700, B25081_009E: 280, B25077_001E: 610000, ...o,
 });
 fs.writeFileSync(path.join(RAW, 'acs_tracts.json'), JSON.stringify({
   year: 2024, pre1980_codes: ['B25034_007E', 'B25034_011E'],
   languages: languageCodes(LANG_LABELS, 'B16001'), birthplaces: birthplaceCodes(BIRTH_LABELS),
-  rows: Object.values(T).filter((g) => g !== T.suffolkSplit).map((g) => ({ geoid: g, name: g, v: acsV(g === T.nassau ? { B19013_001E: 140000, B25007_009E: 0, B25007_004E: 350, B16001_003E: 50, B16001_066E: 0, B16001_075E: 400 } : {}) })),
+  rows: Object.values(T).filter((g) => g !== T.suffolkSplit).map((g) => ({ geoid: g, name: g, v: acsV(g === T.nassau ? { B19013_001E: 140000, B25007_009E: 0, B25007_004E: 350, B16001_003E: 50, B16001_066E: 0, B16001_075E: 400, B25081_009E: 140 } : {}) })),
 }));
 
 const lot = (tract, address, zip, units, year, lon, lat) => ({ bbl: address, boro: 'QN', block: 1, address, zip, cls: units <= 1 ? 'A1' : units === 2 ? 'B1' : 'C0', units, year, sqft: units <= 1 ? 1400 : 2800, lat, lon, tract });
@@ -445,6 +484,11 @@ fs.writeFileSync(path.join(RAW, 'precincts.json'), JSON.stringify({ year: 2020, 
 fs.writeFileSync(path.join(RAW, 'precincts_nyc.json'), JSON.stringify({ year: 2024, precincts: [
   { id: 'ED 23001', county: '081', dem: 550, rep: 430, total: 1000, geometry: { type: 'Polygon', coordinates: [[[-73.81, 40.71], [-73.79, 40.71], [-73.79, 40.73], [-73.81, 40.73], [-73.81, 40.71]]] } },
 ] }));
+// Mortgage applications (HMDA): Queens approves almost everyone, Nassau less so, Rockaway has only 5 (leans on Queens County).
+// No HMDA in Suffolk → only one part (paid-off homes) → no level.
+fs.writeFileSync(path.join(RAW, 'hmda_tracts.json'), JSON.stringify({ year: 2024, tracts: {
+  [T.queens]: { apps: 100, approved: 95, credit_denied: 1 }, [T.rock]: { apps: 5, approved: 2, credit_denied: 2 }, [T.nassau]: { apps: 80, approved: 50, credit_denied: 15 },
+} }));
 fs.writeFileSync(path.join(RAW, 'business_by_bbl.json'), JSON.stringify({ '103 88 AVENUE': ['Home Improvement Contractor'] }));
 // Villages with their own electric utility: one covers the whole Suffolk tract, one a quarter of Nassau's.
 const vbox = (x0, y0, x1, y1) => ({ type: 'Polygon', coordinates: [[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]] });
@@ -497,6 +541,18 @@ t('tract with no ACS data borrows from the nearest tract in the same county', ()
   assert.equal(s.homes, by[T.suffolk].homes); // same land area in the fixture
   assert.equal(s.median_income, by[T.suffolk].median_income);
   assert.equal(by[T.suffolk].estimated_from, null);
+});
+t('Financing-ready on the map: levels across the turf, card numbers, filter bands in the summary', () => {
+  assert.deepEqual([by[T.queens], by[T.rock], by[T.nassau]].map((p) => p.financing.level), ['high', 'medium', 'low']);
+  const q = by[T.queens].financing;
+  assert.deepEqual([q.apps, q.paid_off, q.home_value, q.year], [100, 0.4, 610000, 2024]);
+  assert.ok(q.approval > 0.94 && q.credit_denials < 0.02);
+  assert.ok(by[T.rock].financing.approval > 0.8, 'only 5 applications: pulled toward Queens County');
+  assert.equal(by[T.suffolk].financing, null);
+  const summary = JSON.parse(fs.readFileSync(path.join(OUT, 'summary.json'), 'utf8'));
+  assert.deepEqual(summary.targeting.financing_bands.map((b) => b.key), ['fin_med', 'fin_high']);
+  assert.equal(summary.targeting.financing_year, 2024);
+  assert.equal(by[T.queens].parts.financing, undefined);
 });
 t('municipal electric villages: majority → own utility, partial → flagged', () => {
   assert.equal(by[T.suffolk].utility, 'muni');
