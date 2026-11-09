@@ -427,6 +427,10 @@ t('app config: publishable key accepted, secret keys refused', () => {
   assert.equal(geo.note, undefined);
   assert.ok(geo.min_score > 0 && geo.max_results > 0);
   assert.equal(geo.search_extent.spatialReference.wkid, 4326, 'the locator reads a plain box in its own UTM coordinates and finds nothing');
+  const sv = buildAppConfig({}, team, null, null, readCfg('sources.json').street_view).street_view;   // Street View links reach the map
+  for (const k of ['street_url', 'aerial_url']) { assert.match(sv[k], /^https:\/\//); assert.ok(sv[k].includes('{lat}') && sv[k].includes('{lon}'), `${k} needs {lat} and {lon}`); }
+  assert.equal(sv.note, undefined);
+  assert.equal(buildAppConfig({}, team).street_view, null);
 });
 
 // ---------- end-to-end on fixtures ----------

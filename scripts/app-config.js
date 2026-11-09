@@ -20,7 +20,7 @@ export function checkSupabase(sb) {
   return { ok: true, url, key };
 }
 
-export function buildAppConfig(sb, team, geocoder, personal) {
+export function buildAppConfig(sb, team, geocoder, personal, streetView) {
   const c = checkSupabase(sb);
   return {
     supabase: c.ok ? { url: c.url, key: c.key } : null,
@@ -35,12 +35,13 @@ export function buildAppConfig(sb, team, geocoder, personal) {
     personal: personal ? (({ _readme, ...p }) => p)(personal) : null,   // My fit settings (scoring.json → personal)
     tag_suggestions: team.tag_suggestions || [],
     geocoder: geocoder ? (({ note, ...g }) => g)(geocoder) : null,   // address search (sources.json → geocoder)
+    street_view: streetView ? (({ note, ...s }) => s)(streetView) : null,   // Street View / aerial links (sources.json → street_view)
     refresh_seconds: team.refresh_seconds,
   };
 }
 
 function main() {
-  const app = buildAppConfig(config('supabase.json'), config('team.json'), config('sources.json').geocoder, config('scoring.json').personal);
+  const app = buildAppConfig(config('supabase.json'), config('team.json'), config('sources.json').geocoder, config('scoring.json').personal, config('sources.json').street_view);
   if (!app.supabase) {
     if (/SECRET|service_role/.test(app.supabase_status)) { console.error(`[turfscope] Supabase key refused: ${app.supabase_status}`); process.exit(1); }
     warn(`Knock tracking off: Supabase ${app.supabase_status}. Fill in config/supabase.json.`);

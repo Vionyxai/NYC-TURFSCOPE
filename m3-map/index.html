@@ -68,6 +68,9 @@
   .btn { display: block; width: 100%; border: 0; border-radius: 12px; padding: 12px; font: inherit; font-weight: 600;
     background: var(--accent); color: var(--accent-fg); margin-top: 8px; }
   .btn.ghost { background: var(--chip); color: var(--fg); }
+  a.btn { text-align: center; text-decoration: none; box-sizing: border-box; }
+  .lookrow { display: flex; gap: 8px; }
+  .lookrow .btn { flex: 1; }
   .panel { position: fixed; inset: 0; z-index: 1200; background: var(--bg); display: none; flex-direction: column; }
   .panel.open { display: flex; }
   .panel header { display: flex; gap: 8px; align-items: center; }
@@ -278,6 +281,13 @@
   const money = (x) => (x == null ? '—' : '$' + Math.round(x / 1000) + 'k');
 
   let placingPin = false;                                      // true after "Tap a spot on the map"
+  let lookingAround = false;                                   // true after tapping 👀: the next map tap opens Street View there
+  // A map tap that's meant for "drop a pin here" or "show me Street View here", not for opening what's under it.
+  const tapIntercept = (e) => {
+    if (lookingAround) { lookingAround = false; paintLook(); openLook(e.latlng.lat, e.latlng.lng); return true; }
+    if (placingPin) { placingPin = false; openPinEditor(e.latlng.lat, e.latlng.lng); return true; }
+    return false;
+  };
   const state = { util: 'all', dac: false, mine: false, min: 0, oils: new Set(), colorBy: 'score', bestSort: 'score', bestWorked: false, incomes: new Set(), homes: new Set(), ages: new Set(), sizes: new Set(), langs: new Set(), rets: new Set(), votes: new Set(), fins: new Set() };
   let data, summary, walkIndex = {}, layer, currentList = null;
 
@@ -301,6 +311,15 @@
   try { appCfg = await fetch('data/app.json').then((r) => (r.ok ? r.json() : null)); } catch (e) { appCfg = null; }
 
   const UT = summary.utilities || {};
+  // Street View / aerial links (config/sources.json → street_view). They open Google Maps; nothing is embedded.
+  const SV = (appCfg && appCfg.street_view) || null;
+  const lookUrl = (kind, lat, lon) => (SV && SV[kind] && lat != null ? SV[kind].replace('{lat}', Number(lat).toFixed(6)).replace('{lon}', Number(lon).toFixed(6)) : null);
+  const lookLinks = (lat, lon, what) => (lookUrl('street_url', lat, lon) ? `<div class="lookrow" style="margin-top:8px">
+      <a class="btn ghost" href="${esc(lookUrl('street_url', lat, lon))}" target="_blank" rel="noopener">👀 Street View</a>
+      ${lookUrl('aerial_url', lat, lon) ? `<a class="btn ghost" href="${esc(lookUrl('aerial_url', lat, lon))}" target="_blank" rel="noopener">🛰 Aerial</a>` : ''}</div>
+      ${what ? `<div class="meta" style="text-align:center;margin-top:4px">Opens Google Maps at ${esc(what)}</div>` : ''}` : '');
+  const paintLook = () => { const b = document.getElementById('lookBtn'); if (b) b.classList.toggle('on', lookingAround); };
+  const openLook = (lat, lon) => { const u = lookUrl('street_url', lat, lon); if (u) window.open(u, '_blank', 'noopener'); };
   const utColor = (u) => (UT[u] && UT[u].color) || '#6b7280';
   const utLabel = (u) => (UT[u] && UT[u].label) || u;
 
@@ -586,12 +605,12 @@
     for (const a of K.appts()) {
       const st = aStat(a.status);
       const m = L.marker([a.lat, a.lon], { icon: L.divIcon({ className: '', html: `<span class="appt-pin${a.status === 'canceled' ? ' dim' : ''}${needsUpdate(a) ? ' due' : ''}" style="border-color:${repColor(a.rep)}">${st.icon}</span>`, iconSize: [34, 34], iconAnchor: [17, 17] }), zIndexOffset: a.status === 'canceled' ? 0 : 500 });
-      m.on('click', (e) => { L.DomEvent.stopPropagation(e); if (placingPin) { placingPin = false; openPinEditor(e.latlng.lat, e.latlng.lng); return; } openAppt(a); });
+      m.on('click', (e) => { L.DomEvent.stopPropagation(e); if (tapIntercept(e)) return; openAppt(a); });
       m.addTo(overlay);
     }
     for (const n of K.pins()) {
       const m = L.circleMarker([n.lat, n.lon], { radius: 9, weight: 3, color: '#ffffff', fillColor: repColor(n.rep), fillOpacity: 1 });
-      m.on('click', (e) => { L.DomEvent.stopPropagation(e); if (placingPin) { placingPin = false; openPinEditor(e.latlng.lat, e.latlng.lng); return; } openPin(n); });
+      m.on('click', (e) => { L.DomEvent.stopPropagation(e); if (tapIntercept(e)) return; openPin(n); });
       m.addTo(overlay);
     }
   }
@@ -617,7 +636,7 @@
       },
       onEachFeature: (f, l) => l.on('click', (e) => {
         L.DomEvent.stopPropagation(e);
-        if (placingPin) { placingPin = false; openPinEditor(e.latlng.lat, e.latlng.lng); return; }  // dropping a pin, not opening the card
+        if (tapIntercept(e)) return;  // dropping a pin or looking around, not opening the card
         openSheet(f.properties);
       }),
     }).addTo(map);
@@ -625,6 +644,15 @@
   }
 
   let cardOpen = null;                                         // the tract whose card is showing, for live updates
+  // A spot inside the tract for "look around here": the polygon's center if it falls inside, else its first corner.
+  function tractCenter(geoid) {
+    const f = data.features.find((x) => x.properties.geoid === geoid);
+    if (!f) return [null, null];
+    const c = L.geoJSON(f).getBounds().getCenter();
+    if (inGeom([c.lng, c.lat], f.geometry)) return [c.lat, c.lng];
+    const ring = f.geometry.type === 'Polygon' ? f.geometry.coordinates[0] : f.geometry.coordinates[0][0];
+    return [ring[0][1], ring[0][0]];
+  }
   function openSheet(p) {
     cardOpen = p;
     const fuel = p.fuel || {};
@@ -672,6 +700,7 @@
       ${p.gaps && p.gaps.length ? `<div class="meta">Missing data: ${esc(p.gaps.join(', '))}</div>` : ''}
       ${hasList && canKnock() ? '<div class="meta" id="progLine" style="margin-top:8px">Team progress: loading…</div>' : ''}
       ${canKnock() ? `<div class="section" id="tagBox"></div><div class="section" id="turfBox"></div><div class="section" id="areaNotes"></div>` : ''}
+      ${((c) => lookLinks(c[0], c[1], searchHit && searchHit.geoid === p.geoid ? 'this address' : 'middle of the tract'))(searchHit && searchHit.geoid === p.geoid ? [searchHit.lat, searchHit.lon] : tractCenter(p.geoid))}
       ${hasList
         ? `<button class="btn" id="walkBtn">Walk list · ${hasList} homes</button>`
         : `<div class="meta" style="margin-top:8px">No address-level list for this tract yet.</div>`}
@@ -828,7 +857,7 @@
       <div class="item${walk.hl === r.bbl && Date.now() < walk.hlUntil ? ' row-hl' : ''}" data-w="${i}">
         <div class="s" style="color:${colorFor(r.score)}">${r.score}</div>
         <div class="a">${esc(r.address)}${tags(r)}<small>${r.units} unit${r.units > 1 ? 's' : ''}${r.year ? ` · built ${r.year}` : ''}${r.sqft ? ` · ${Math.round(r.sqft).toLocaleString()} sq ft` : ''}${r.heat ? ` · ${esc(r.heat)}` : ''}${/^[A-Z]/.test(r.cls || '') ? ` · ${esc(r.cls)}` : ''} · ${esc(r.town || r.zip || '')}</small>${knockLine(r)}${noteSnip(r)}</div>
-        <div class="d"><span data-d="${i}">${here ? fmtDist(metres(here, [r.lat, r.lon])) : ''}</span><a href="https://maps.apple.com/?daddr=${r.lat},${r.lon}&dirflg=w" target="_blank" rel="noopener">Walk</a></div>
+        <div class="d"><span data-d="${i}">${here ? fmtDist(metres(here, [r.lat, r.lon])) : ''}</span><a href="https://maps.apple.com/?daddr=${r.lat},${r.lon}&dirflg=w" target="_blank" rel="noopener">Walk</a>${lookUrl('street_url', r.lat, r.lon) ? `<a href="${esc(lookUrl('street_url', r.lat, r.lon))}" target="_blank" rel="noopener">👀 Look</a>` : ''}</div>
       </div>`).join('') || `<div class="empty">${walk.rows.length ? 'No homes match the home age / house size you picked.' : 'No homes in this tract.'}</div>`;
   }
 
@@ -1233,6 +1262,7 @@
     body.innerHTML = `<div class="title">📍 Pin</div>
       <div class="note-item" style="font-size:16px">${esc(n.body)}<span class="who">${noteWho(n)}</span></div>
       <a class="btn ghost" style="text-align:center;text-decoration:none" href="https://maps.apple.com/?daddr=${n.lat},${n.lon}&dirflg=w" target="_blank" rel="noopener">Walk here</a>
+      ${lookLinks(n.lat, n.lon, 'this spot')}
       ${n.mine || (me && me.is_admin) ? '<button class="btn ghost" id="pinDel">Delete pin</button>' : ''}
       <button class="btn ghost" id="pinClose">Close</button>`;
     const del = document.getElementById('pinDel');
@@ -1275,6 +1305,7 @@
     body.innerHTML = `<div class="title">${st.icon} ${esc(st.label)} · ${esc(fmtAppt(apptWhen(a)))}</div>
       <div class="meta">${a.address ? `${esc(a.address)} · ` : ''}booked by <b style="color:${repColor(a.rep)}">${esc(a.rep || '')}</b> · ${esc(fmtWhen(a.created_at))}${a.pending ? ' · waiting to sync' : ''}${a.failed ? ' · NOT SAVED' : ''}</div>
       ${a.note ? `<div class="note-item" style="font-size:16px;margin-top:8px">${esc(a.note)}</div>` : ''}
+      ${lookLinks(a.lat, a.lon, 'the house')}
       ${needsUpdate(a) ? '<div class="warn" style="margin-top:8px">This appointment has passed. What happened?</div>' : ''}
       <div class="meta" style="margin-top:10px">Update it (one tap; the team sees who changed it)</div>
       <div class="kgrid">${outcomes.map((o, i) => `<button data-ast="${esc(o.key)}" class="${i === outcomes.length - 1 && outcomes.length % 2 ? 'wide' : ''}${a.status === o.key ? ' cur' : ''}" style="background:${o.color}">${o.icon} ${esc(o.label)}</button>`).join('')}</div>
@@ -1336,15 +1367,11 @@
     }));
     const here = document.getElementById('pinHere');
     if (here) here.onclick = () => openPinEditor(loc.last[0], loc.last[1]);
-    document.getElementById('pinTap').onclick = () => { closeAll(); placingPin = true; toast(pinKind === 'appt' ? 'Tap the map where the appointment is' : 'Tap the map where the pin goes'); };
+    document.getElementById('pinTap').onclick = () => { closeAll(); placingPin = true; lookingAround = false; paintLook(); toast(pinKind === 'appt' ? 'Tap the map where the appointment is' : 'Tap the map where the pin goes'); };
     document.getElementById('pinCancel').onclick = closeAll;
     document.getElementById('noteSheet').classList.add('open');
   }
-  map.on('click', (e) => {
-    if (!placingPin) return;
-    placingPin = false;
-    openPinEditor(e.latlng.lat, e.latlng.lng);
-  });
+  map.on('click', (e) => tapIntercept(e));
 
   // ---------- Account ----------
   const acctBtn = document.getElementById('acctBtn');
@@ -1525,7 +1552,7 @@
       <div class="meta">${r.units} unit${r.units > 1 ? 's' : ''}${r.year ? ` · built ${r.year}` : ''}${r.fuel ? ` · ${esc(FUEL_LABEL[r.fuel] || r.fuel)}` : ''} · ${esc(r.town || r.zip || '')}</div>
       ${k && STATUS[k.status] ? `<div class="kn" style="color:${STATUS[k.status].color};margin-top:6px">Last: ${esc(STATUS[k.status].label)}${k.followup ? ` (${esc(FOLLOW[k.followup] || '')})` : ''} · ${esc(k.rep || '')} · ${esc(fmtWhen(k.knocked_at))}</div>` : ''}`;
     if (!canKnock()) {
-      body.innerHTML = `${head}<p class="meta">Sign in to record knocks.</p><button class="btn" id="kSignIn">Sign in</button><button class="btn ghost" id="kClose">Close</button>`;
+      body.innerHTML = `${head}${r.lat != null ? lookLinks(r.lat, r.lon, 'this house') : ''}<p class="meta">Sign in to record knocks.</p><button class="btn" id="kSignIn">Sign in</button><button class="btn ghost" id="kClose">Close</button>`;
       document.getElementById('kSignIn').onclick = openAcct;
     } else {
       const canUndo = k && (k.rep === me.name || me.is_admin);
@@ -1537,6 +1564,7 @@
           <button class="btn" id="fSave">Save come back</button>
         </div>
         ${r.lat != null ? '<button class="btn ghost" id="kAppt">📅 Pin appointment</button>' : ''}
+        ${r.lat != null ? lookLinks(r.lat, r.lon, 'this house') : ''}
         ${canUndo ? '<button class="btn ghost" id="kUndo">Undo last knock</button>' : ''}
         <div class="section" id="houseNotes"><h4>House notes</h4>${noteList(K.notesFor({ bbl: r.bbl }), 'No notes on this house yet.')}${noteBox('For the team, e.g. “Big dog — use side gate” — no names or phone numbers')}</div>
         <button class="btn ghost" id="kClose">Close</button>`;
@@ -1575,7 +1603,7 @@
   }
 
   document.getElementById('panelList').addEventListener('click', (e) => {
-    if (e.target.closest('a')) return;                       // the Walk link opens Apple Maps
+    if (e.target.closest('a')) return;                       // Walk opens Apple Maps, Look opens Street View
     const item = e.target.closest('.item[data-w]');
     if (!item || currentList == null || !K.enabled) return;  // knock tracking not set up yet
     const r = walk.shown[Number(item.dataset.w)];
@@ -1684,6 +1712,21 @@
     return b;
   } });
   new PinCtl({ position: 'topright' }).addTo(map);
+  // 👀 Look around: tap it, then tap any spot on the map to open Street View there.
+  const LookCtl = L.Control.extend({ onAdd() {
+    const b = L.DomUtil.create('button', 'locate');
+    b.id = 'lookBtn'; b.type = 'button'; b.title = 'Street View'; b.setAttribute('aria-label', 'Street View: tap, then tap a spot on the map');
+    b.style.marginTop = '8px';
+    b.onclick = () => {
+      lookingAround = !lookingAround; placingPin = false; paintLook();
+      if (lookingAround) toast('Tap any spot on the map to see it in Street View');
+    };
+    b.textContent = '👀';
+    b.style.fontSize = '22px';
+    L.DomEvent.disableClickPropagation(b);
+    return b;
+  } });
+  if (SV) new LookCtl({ position: 'topright' }).addTo(map);
   paintAcct();
   const btn = document.getElementById('locateBtn');
   const here = document.getElementById('here');

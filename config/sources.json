@@ -152,5 +152,10 @@
       }
     },
     "near_house_metres": 60
+  },
+  "street_view": {
+    "note": "See a house or block before knocking: links that open Google Maps (the app on iPhone, if installed) at a spot. Free, no API key. {lat} and {lon} are filled in by the map. street_url opens Street View (if Google has imagery nearby, it snaps to the closest photo); aerial_url opens the satellite view to see the block layout.",
+    "street_url": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={lat},{lon}",
+    "aerial_url": "https://www.google.com/maps/@?api=1&map_action=map&center={lat},{lon}&zoom=19&basemap=satellite"
   }
 }
