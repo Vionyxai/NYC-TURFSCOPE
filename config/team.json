@@ -2,11 +2,6 @@
   "_readme": "The field team and tracking options. The reps list is the source for the Supabase reps table (supabase/001_team_tracking.sql seeds the team, later numbered SQL files add or deactivate reps; npm test checks the active list matches). Each rep's color outlines the turf they claim on the map. Fill in each rep's email after you create their login in Supabase (supabase/README.md step 4). Knock statuses, follow-ups and turf statuses must match the SQL check rules (npm test checks that too). Notes are free text up to note_max characters; the database refuses phone numbers and emails in notes. Area tags are short labels on a tract (up to tag_max characters, same no-phone/no-email rule as notes); tag_suggestions are one-tap choices on the tract card, and reps can type their own. appointment_statuses = what happened after an appointment was pinned (supabase/007 must list the same keys; npm test checks); open = still needs an outcome.",
   "reps": [
     {
-      "name": "Issac",
-      "admin": false,
-      "color": "#7c3aed"
-    },
-    {
       "name": "Matt",
       "admin": false,
       "color": "#0891b2"
@@ -20,6 +15,11 @@
       "name": "Kai",
       "admin": false,
       "color": "#db2777"
+    },
+    {
+      "name": "Ash",
+      "admin": false,
+      "color": "#7c3aed"
     }
   ],
   "knock_statuses": [

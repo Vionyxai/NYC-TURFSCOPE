@@ -399,7 +399,7 @@ t('Supabase SQL matches config/team.json (reps, statuses, follow-ups)', () => {
     for (const [, name] of q.matchAll(/update public\.reps set active = false where name = '([^']+)'/g)) active.splice(active.findIndex((r) => r.name === name), 1);
   }
   assert.deepEqual(active, team.reps.map(({ name, admin }) => ({ name, admin })));
-  assert.deepEqual(team.reps.map((r) => r.name), ['Issac', 'Matt', 'Gio', 'Kai']);
+  assert.deepEqual(team.reps.map((r) => r.name), ['Matt', 'Gio', 'Kai', 'Ash']);
   const lists = (col) => [...sql.matchAll(new RegExp(`${col} in \\(([^)]+)\\)`, 'g'))].map((m) => [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]));
   assert.deepEqual(lists('status'), [team.knock_statuses.map((x) => x.key), team.turf_statuses.map((x) => x.key)]);
   assert.deepEqual(lists('followup'), [team.followups.map((x) => x.key)]);
@@ -662,11 +662,12 @@ const team = readCfg('team.json');
 const makeTeam = () => fakeSupabase({
   users: { 'gio@x.com': 'pw-gio', 'matt@x.com': 'pw-matt', 'stranger@x.com': 'pw-s' },
   reps: [
-    { id: 1, name: 'Issac', email: null, is_admin: false },
+    { id: 1, name: 'Issac', email: 'issac@x.com', is_admin: false, active: false },   // left the team (009)
     { id: 2, name: 'Matt', email: 'matt@x.com', is_admin: false },
     { id: 3, name: 'Cody', email: 'cody@x.com', is_admin: false, active: false },   // left the team
     { id: 4, name: 'Gio', email: 'Gio@x.com', is_admin: true },
     { id: 5, name: 'Kai', email: null, is_admin: false },
+    { id: 6, name: 'Ash', email: null, is_admin: false },
   ],
   statuses: team.knock_statuses.map((s) => s.key),
 });

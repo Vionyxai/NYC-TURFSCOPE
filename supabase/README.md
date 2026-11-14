@@ -4,7 +4,7 @@ About 15 minutes, all in the browser. You only do this once.
 
 ## How it's set up (plain version)
 
-- **`reps`:** one row per rep: Issac, Matt, Gio (the admin) and Kai. Cody left the team (his row stays, inactive, so his history keeps his name). Each row gets that rep's login email, and that's how a login becomes "Matt".
+- **`reps`:** one row per rep: Matt, Gio (the admin), Kai and Ash. Cody left the team (his row stays, inactive, so his history keeps his name). Issac left too: his row stays inactive (so his login is locked out) but everything he entered was removed (009). Each row gets that rep's login email, and that's how a login becomes "Matt".
 - **`knocks`:** every tap on a door (house status), stamped with the rep who made it.
 - **`turf_log`:** every change to an area's status: **Claimed / Finished / Avoid / Open**, stamped with the rep. This is how you see who picked which turf.
 - **`notes`:** team notes, on a **house**, on a **whole tract (area)**, or as a **pin** dropped on the map.
@@ -39,10 +39,10 @@ All of this is in [`001_team_tracking.sql`](001_team_tracking.sql) and tested by
 SQL Editor → New query. Put in the real emails, then Run:
 
 ```sql
-update public.reps set email = 'issac@example.com' where name = 'Issac';
 update public.reps set email = 'matt@example.com'  where name = 'Matt';
 update public.reps set email = 'kai@example.com'   where name = 'Kai';
 update public.reps set email = 'gio@example.com'   where name = 'Gio';
+update public.reps set email = 'ash@example.com'   where name = 'Ash';
 select name, email, is_admin, active from public.reps order by id;
 ```
 
@@ -69,6 +69,12 @@ Paste `supabase/007_appointment_outcomes.sql` and press **Run** (once). Until th
 ## Step 4h: My fit (each rep's own turf map)
 Paste `supabase/008_rep_results.sql` and press **Run** (once). It adds one read-only view, `rep_tract_results`: per rep, per tract, the houses they knocked, their last knock, and the appointments they booked there with how far each got. Nothing new is stored. Until it's run, the 🎯 My fit option stays hidden.
 
+## Step 4i: Issac out, Ash in
+1. Paste `supabase/009_replace_issac_with_ash.sql` and press **Run** (once). It locks Issac's login right away, **deletes everything he entered** (knocks, house and area notes, pins, tags, saved turfs, appointments and their outcomes, and outcome updates he made on teammates' appointments) and releases every area he last changed back to **Open** (stamped by Gio) so anyone can claim or save it. This can't be undone. The result shows Issac `active = false` and Ash `active = true`.
+2. **Authentication → Users → Add user → Create new user:** Ash's email and a password, with **Auto Confirm User** checked.
+3. SQL Editor: `update public.reps set email = 'ASH_EMAIL_HERE' where name = 'Ash';` (put in Ash's real email).
+4. Optional: delete Issac's user under Authentication → Users. His login already does nothing after step 1.
+
 ## Step 5: connect the app
 1. **Project Settings → API Keys** (or **API**). Copy:
    - **Project URL**, like `https://abcd1234.supabase.co`
@@ -88,7 +94,7 @@ Paste `supabase/008_rep_results.sql` and press **Run** (once). It adds one read-
 Heads-up: the home-screen app and Safari keep separate logins. Sign in inside the home-screen app.
 
 ## Day to day
-- **Pick turf:** tap a tract → **Claim**. The map outlines it in your color with your name (Issac purple, Matt teal, Kai pink, Gio brown). **Finished** makes it dashed; **Avoid** makes it dark dotted; **Open** releases it. Any rep can change any area. "Undo last area change" takes back your own.
+- **Pick turf:** tap a tract → **Claim**. The map outlines it in your color with your name (Ash purple, Matt teal, Kai pink, Gio brown). **Finished** makes it dashed; **Avoid** makes it dark dotted; **Open** releases it. Any rep can change any area. "Undo last area change" takes back your own.
 - **Knock:** open the walk list → tap a house → pick a status. "Come back" asks when. The black bar has **Undo** for 6 seconds; later use "Undo last knock" in the house's sheet.
 - **Appointments:** tap **Booked** on a house and the app asks to pin the appointment (time and a note are optional; **Skip** is one tap). Or use the pin button → **📅 Appointment** to drop one anywhere. Everyone sees 📅 pins in the booking rep's color; tract cards count them; **My stuff** lists upcoming ones and **Where the team books most**; Target → Color the map by → **📅 Appointments** shows the hot spots. No homeowner names or phone numbers in the note.
 - **After an appointment:** tap its 📅 pin (or tap it in **My stuff**) and tap what happened: **Sat**, **Closed**, **Delayed** (pick the new time), **Canceled** or **Installed**. Add an optional note. Every change is stamped with your name, kept in the appointment's **History**, and can be undone. Past appointments with no outcome show under **⚠️ Appointments that need an update** and as ⚠️ on your name button. **Team results** in My stuff shows the close rate.
