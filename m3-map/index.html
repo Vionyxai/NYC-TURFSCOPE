@@ -454,7 +454,7 @@
   const repColor = (name) => REPCOLOR[name] || '#374151';
   const TURF = Object.fromEntries(((appCfg && appCfg.turf_statuses) || []).map((x) => [x.key, x]));
   const NOTE_MAX = (appCfg && appCfg.note_max) || 280;
-  // Appointment outcomes (config/team.json → appointment_statuses): Sat, Closed, Delayed, Canceled, Installed.
+  // Appointment outcomes (config/team.json → appointment_statuses): Sat, Sat didn't sign, Credit fail, Closed, Delayed, Canceled, Installed.
   const ASTAT = Object.fromEntries(((appCfg && appCfg.appointment_statuses) || []).map((x) => [x.key, x]));
   const aStat = (k) => ASTAT[k] || { key: k || 'scheduled', label: 'Scheduled', color: '#2563eb', open: true };
   const apptWhen = (a) => a.when_at || a.appt_at;
@@ -782,7 +782,7 @@
     const ap = shownApptsIn(p.geoid);
     const byRep = ap.reduce((m, a) => ((m[a.rep] = (m[a.rep] || 0) + 1), m), {});
     const byStat = ap.reduce((m, a) => ((m[a.status || 'scheduled'] = (m[a.status || 'scheduled'] || 0) + 1), m), {});
-    const outcomeText = ['closed', 'installed', 'sat', 'delayed', 'canceled'].filter((k) => byStat[k]).map((k) => `${byStat[k]} ${aStat(k).label.toLowerCase()}`).join(' · ');
+    const outcomeText = ['closed', 'installed', 'sat', 'sat_no_sign', 'credit_fail', 'delayed', 'canceled'].filter((k) => byStat[k]).map((k) => `${byStat[k]} ${aStat(k).label.toLowerCase()}`).join(' · ');
     const apptLine = apptView === 'team'
       ? `<div class="meta" style="margin-bottom:10px">Team: <b>${ap.length}</b> appointment${ap.length === 1 ? '' : 's'} booked here${ap.length ? ` (${Object.entries(byRep).map(([r, n]) => `${esc(r)} ${n}`).join(', ')})` : ''}${outcomeText ? `<br>${outcomeText}` : ''}</div>`
       : `<div class="meta" style="margin-bottom:10px">You booked <b>${ap.length}</b> appointment${ap.length === 1 ? '' : 's'} here${outcomeText ? `<br>${outcomeText}` : ''}</div>`;
@@ -1523,7 +1523,7 @@
       document.getElementById('apptList').innerHTML = upcoming.length ? upcoming.map(apptRow).join('')
         : `<div class="meta">${apptView === 'team' ? 'No upcoming team appointments.' : 'No upcoming appointments. Tap <b>Booked</b> on a house to pin one.'}</div>`;
       const counts = all.reduce((m, a) => ((m[a.status || 'scheduled'] = (m[a.status || 'scheduled'] || 0) + 1), m), {});
-      const satPlus = (counts.sat || 0) + (counts.closed || 0) + (counts.installed || 0), won = (counts.closed || 0) + (counts.installed || 0);
+      const satPlus = (counts.sat || 0) + (counts.sat_no_sign || 0) + (counts.credit_fail || 0) + (counts.closed || 0) + (counts.installed || 0), won = (counts.closed || 0) + (counts.installed || 0);
       document.getElementById('apptStats').innerHTML = all.length
         ? `${all.length} booked · ${Object.values(ASTAT).filter((x) => counts[x.key]).map((x) => `${counts[x.key]} ${esc(x.label.toLowerCase())}`).join(' · ')}<br><b>${Math.round((won / all.length) * 100)}%</b> of booked appointments closed${satPlus ? ` · <b>${Math.round((won / satPlus) * 100)}%</b> of sits closed` : ''}`
         : (apptView === 'team' ? 'Shows once the team pins appointments.' : 'Shows once you pin appointments.');

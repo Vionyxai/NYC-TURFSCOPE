@@ -123,6 +123,20 @@
       "hint": "Met the homeowner"
     },
     {
+      "key": "sat_no_sign",
+      "label": "Sat, didn't sign",
+      "color": "#475569",
+      "open": false,
+      "hint": "Met the homeowner, no sale"
+    },
+    {
+      "key": "credit_fail",
+      "label": "Credit fail",
+      "color": "#b91c1c",
+      "open": false,
+      "hint": "Wanted it, financing didn't go through"
+    },
+    {
       "key": "closed",
       "label": "Closed",
       "color": "#16a34a",

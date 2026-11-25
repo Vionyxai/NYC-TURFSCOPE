@@ -46,7 +46,7 @@ export function fakeSupabase({ users, reps, statuses, turfStatuses = ['claimed',
         if (!a.tract) continue;
         const r = row(a.rep, a.tract);
         r.appts++;
-        if (['sat', 'closed', 'installed'].includes(a.status)) r.sat++;
+        if (['sat', 'sat_no_sign', 'credit_fail', 'closed', 'installed'].includes(a.status)) r.sat++;
         if (['closed', 'installed'].includes(a.status)) r.closed++;
         if (a.status === 'installed') r.installed++;
       }
@@ -82,7 +82,7 @@ export function fakeSupabase({ users, reps, statuses, turfStatuses = ['claimed',
     turf_log: (t) => turfStatuses.includes(t.status),
     notes: (x) => x.body && x.body.trim() && x.body.length <= 280 && !phone.test(x.body) && !email.test(x.body),
     saved_turfs: (x) => /^[0-9]{11}$/.test(x.tract),
-    appointment_updates: (x) => ['scheduled', 'sat', 'closed', 'delayed', 'canceled', 'installed'].includes(x.status) && tables.appointments.some((a) => a.client_id === x.appt) && (x.note == null || (!phone.test(x.note) && !email.test(x.note))),
+    appointment_updates: (x) => ['scheduled', 'sat', 'sat_no_sign', 'credit_fail', 'closed', 'delayed', 'canceled', 'installed'].includes(x.status) && tables.appointments.some((a) => a.client_id === x.appt) && (x.note == null || (!phone.test(x.note) && !email.test(x.note))),
     appointments: (x) => x.lat >= 40 && x.lat <= 42 && x.lon >= -75 && x.lon <= -71 && (x.note == null || (x.note.trim() && x.note.length <= 280 && !phone.test(x.note) && !email.test(x.note))),
     area_tags: (x) => /^[0-9]{11}$/.test(x.tract) && x.label && x.label.trim() && x.label.length <= 40 && !phone.test(x.label) && !email.test(x.label),
   };

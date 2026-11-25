@@ -275,6 +275,13 @@ do $$ begin
   assert (select (appts, sat, closed, installed) = (1::bigint, 1::bigint, 1::bigint, 0::bigint) from rep_tract_results where rep = 'Ash' and tract = '36047101200'), 'closed counts as sat too';
   assert (select last_knock_at is not null from rep_tract_results where rep = 'Ash' and tract = '36047101200'), 'last knock time for the toes warning';
 end $$;
+-- 010: "Sat, didn't sign" and "Credit fail" are accepted and count as sits, not closes
+insert into appointments (client_id, tract, lat, lon) values ('d4d4d4d4-0000-0000-0000-000000000002', '36047101200', 40.65, -73.94), ('d4d4d4d4-0000-0000-0000-000000000003', '36047101200', 40.65, -73.94);
+insert into appointment_updates (client_id, appt, status) values (gen_random_uuid(), 'd4d4d4d4-0000-0000-0000-000000000002', 'sat_no_sign'), (gen_random_uuid(), 'd4d4d4d4-0000-0000-0000-000000000003', 'credit_fail');
+do $$ begin
+  assert (select (appts, sat, closed) = (3::bigint, 3::bigint, 1::bigint) from rep_tract_results where rep = 'Ash' and tract = '36047101200'), 'didn''t sign + credit fail count as sits, not closes';
+  assert (select status from team_appointments where client_id = 'd4d4d4d4-0000-0000-0000-000000000003') = 'credit_fail', 'credit fail shows as the latest outcome';
+end $$;
 reset role;
 select pg_temp.as_user('matt@x.com');
 do $$ begin assert (select count(*) from rep_tract_results where rep = 'Ash') >= 1, 'the team sees each other''s results'; end $$;

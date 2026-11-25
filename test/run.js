@@ -414,8 +414,10 @@ t('Supabase SQL matches config/team.json (reps, statuses, follow-ups)', () => {
   assert.deepEqual(lists('status'), [team.knock_statuses.map((x) => x.key), team.turf_statuses.map((x) => x.key)]);
   assert.deepEqual(lists('followup'), [team.followups.map((x) => x.key)]);
   assert.match(sql, new RegExp(`char_length\\(t\\) <= ${team.note_max}`));
-  const outSql = fs.readFileSync(path.join(ROOT, 'supabase', '007_appointment_outcomes.sql'), 'utf8');
-  assert.deepEqual([...outSql.match(/status in \(([^)]+)\)/)[1].matchAll(/'([^']+)'/g)].map((x) => x[1]), team.appointment_statuses.map((x) => x.key), 'appointment outcomes match team.json');
+  // Appointment outcomes: the newest migration that sets the list (007, then 010) must match team.json.
+  const outLists = files.map((f) => fs.readFileSync(path.join(ROOT, 'supabase', f), 'utf8')).filter((q) => /appointment_updates/.test(q))
+    .map((q) => q.match(/status in \(('scheduled'[^)]+)\)/)).filter(Boolean);
+  assert.deepEqual([...outLists.pop()[1].matchAll(/'([^']+)'/g)].map((x) => x[1]), team.appointment_statuses.map((x) => x.key), 'appointment outcomes match team.json');
   const tagSql = fs.readFileSync(path.join(ROOT, 'supabase', '005_area_tags.sql'), 'utf8');
   assert.match(tagSql, new RegExp(`char_length\\(btrim\\(label\\)\\) between 1 and ${team.tag_max} and public\\.clean_note\\(label\\)`), 'tag length + clean rule match team.json');
 });
@@ -927,6 +929,12 @@ await at('appointment outcomes: anyone updates, newest wins, delay moves the tim
   clock += 60000;
   matt.setApptStatus(a.client_id, 'closed'); await matt.flush(); await gio.loadTeam();
   assert.equal(gio.appts()[0].status, 'closed');
+  clock += 60000;
+  matt.setApptStatus(a.client_id, 'credit_fail'); await matt.flush(); await gio.loadTeam();   // 010: financing didn't go through
+  assert.equal(gio.appts()[0].status, 'credit_fail');
+  clock += 60000;
+  matt.setApptStatus(a.client_id, 'sat_no_sign'); await matt.flush(); await gio.loadTeam();
+  assert.equal(gio.appts()[0].status, 'sat_no_sign');
 });
 await at('My fit data: doors, appointments and closes per rep per tract; empty before 008 is run', async () => {
   const sb = makeTeam();
