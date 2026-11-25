@@ -43,6 +43,8 @@
   .seg button.on { background: var(--accent); color: var(--accent-fg); }
   .chip { border: 1px solid var(--line); background: var(--chip); color: var(--fg); border-radius: 999px; padding: 6px 10px; font: inherit; font-size: 13px; }
   .chip.on { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  #app > header .chip { position: relative; }
+  #app > header .chip::after { content: ''; position: absolute; inset: -8px 0; }   /* at least 44px tall tap area; looks the same */
   select.chip { appearance: none; }
   label.slider { display: flex; align-items: center; gap: 6px; font-size: 13px; flex: 1; min-width: 160px; }
   label.slider input { flex: 1; }
@@ -194,6 +196,7 @@
       <label class="slider">Min score <input type="range" id="minScore" min="0" max="100" step="5" value="0"><b id="minVal">0</b></label>
       <button class="chip" id="mineBtn" style="display:none">Mine</button>
       <button class="chip" id="savedBtn" style="display:none">Saved</button>
+      <button class="chip" id="teamApptBtn" style="display:none" aria-pressed="false">Team appts</button>
       <button class="chip" id="bestBtn">Best turf</button>
     </div>
   </header>
@@ -1220,10 +1223,19 @@
     document.getElementById('targetDone').textContent = `Show ${n2} tract${n2 === 1 ? '' : 's'}`;
   }
   // Mine / Team appointments: flip the setting, remember it on this phone, repaint whatever shows appointments.
+  // The header chip: on = showing the team's appointments.
+  function paintTeamApptBtn(show = canKnock()) {
+    const b = document.getElementById('teamApptBtn');
+    if (!b) return;
+    b.style.display = show ? '' : 'none';
+    b.classList.toggle('on', apptView === 'team');
+    b.setAttribute('aria-pressed', apptView === 'team' ? 'true' : 'false');
+  }
+  document.getElementById('teamApptBtn').onclick = () => setApptView(apptView === 'team' ? 'mine' : 'team');
   function setApptView(v, quiet) {
     apptView = v === 'team' ? 'team' : 'mine';
     try { storage.setItem('ts.apptView', apptView); } catch (e) { /* private mode */ }
-    paintTarget(); render();
+    paintTarget(); render(); paintTeamApptBtn();
     if (cardOpen && document.getElementById('sheet').classList.contains('open')) paintTractTeam(cardOpen);
     if (!quiet) toast(apptView === 'team' ? "Showing the team's appointments" : 'Showing your appointments');
   }
@@ -1431,6 +1443,7 @@
     if (state.colorBy === 'fit' && !fitOn()) state.colorBy = 'score';
     const sb = document.getElementById('savedBtn');
     sb.style.display = on ? '' : 'none';
+    paintTeamApptBtn(on);
     if (on) { const n = K.mySaved().length; sb.textContent = n ? `Saved · ${n}` : 'Saved'; }
     const pinBtn = document.getElementById('pinBtn');          // created with the map controls further down
     if (pinBtn) pinBtn.style.display = on ? '' : 'none';
@@ -1486,14 +1499,14 @@
         <div class="meta">${esc(K.email())}</div>
         <div class="warn" style="margin-top:10px">${n ? `<b>${n} knock${n === 1 ? '' : 's'} waiting to sync.</b> They're saved on this phone and go up as soon as you have signal.` : 'All knocks synced.'}</div>
         ${n ? '<button class="btn" id="acctSync">Sync now</button>' : ''}
-        <div class="section" id="fitBox" style="display:none"><h4>What works for you</h4><div id="fitStrengths" class="mine-list fitlist"></div></div>
-        <div class="section"><h4>My turf</h4><div id="myTurf" class="mine-list"></div></div>
-        <div class="section"><h4>My come-backs &amp; interested</h4><div id="myFollow" class="mine-list meta">Loading…</div></div>
         <div class="section"><h4>Appointments</h4><div class="seg apptview" style="margin-top:4px"><button data-av="mine" class="${apptView === 'mine' ? 'on' : ''}">Mine</button><button data-av="team" class="${apptView === 'team' ? 'on' : ''}">Team</button></div></div>
         <div class="section" id="apptDueBox" style="display:none"><h4>${apptView === 'team' ? 'Team appointments' : 'My appointments'} that need an update</h4><div id="apptDue" class="mine-list"></div></div>
         <div class="section"><h4>${apptView === 'team' ? 'Team' : 'My'} upcoming appointments</h4><div id="apptList" class="mine-list"></div></div>
         <div class="section"><h4>${apptView === 'team' ? 'Team results' : 'My results'}</h4><div id="apptStats" class="meta"></div></div>
         <div class="section"><h4>${apptView === 'team' ? 'Where the team books most' : 'Where I book most'}</h4><div id="apptTop" class="mine-list"></div></div>
+        <div class="section" id="fitBox" style="display:none"><h4>What works for you</h4><div id="fitStrengths" class="mine-list fitlist"></div></div>
+        <div class="section"><h4>My turf</h4><div id="myTurf" class="mine-list"></div></div>
+        <div class="section"><h4>My come-backs &amp; interested</h4><div id="myFollow" class="mine-list meta">Loading…</div></div>
         <div class="section"><h4>Team today</h4><div id="scoreBox" class="meta">Loading…</div></div>
         <button class="btn ghost" id="acctOut">Sign out</button>
         <button class="btn ghost" id="acctClose">Close</button>${tip}`;
