@@ -96,6 +96,7 @@
   ],
   "note_max": 280,
   "refresh_seconds": 60,
+  "appt_bubble_below_zoom": 15,
   "tag_max": 40,
   "tag_suggestions": [
     "Good weekend turf",

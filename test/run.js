@@ -441,6 +441,7 @@ t('app config: publishable key accepted, secret keys refused', () => {
   for (const k of ['street_url', 'aerial_url']) { assert.match(sv[k], /^https:\/\//); assert.ok(sv[k].includes('{lat}') && sv[k].includes('{lon}'), `${k} needs {lat} and {lon}`); }
   assert.equal(sv.note, undefined);
   assert.equal(buildAppConfig({}, team).street_view, null);
+  assert.ok(buildAppConfig({}, team).appt_bubble_below_zoom >= 10, 'appointment count bubbles: zoom threshold reaches the map');
 });
 
 // ---------- end-to-end on fixtures ----------

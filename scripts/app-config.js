@@ -37,6 +37,7 @@ export function buildAppConfig(sb, team, geocoder, personal, streetView) {
     geocoder: geocoder ? (({ note, ...g }) => g)(geocoder) : null,   // address search (sources.json → geocoder)
     street_view: streetView ? (({ note, ...s }) => s)(streetView) : null,   // Street View / aerial links (sources.json → street_view)
     refresh_seconds: team.refresh_seconds,
+    appt_bubble_below_zoom: team.appt_bubble_below_zoom,   // zoomed out further than this, appointments merge into count bubbles
   };
 }
 
