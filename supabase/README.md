@@ -52,7 +52,7 @@ The emails must match the logins from step 3 exactly (upper/lower case doesn't m
 Long Island walk lists use the state's parcel IDs instead of NYC's 10-digit lot numbers. Paste the contents of `supabase/002_long_island_ids.sql` into a new SQL Editor tab and press **Run** (once). Until then, knocks and house notes on Long Island houses won't save.
 
 ## Step 4c: saved turfs
-Paste the contents of `supabase/003_saved_turfs.sql` into a new SQL Editor tab and press **Run** (once). Until then the ★ Saved list stays empty.
+Paste the contents of `supabase/003_saved_turfs.sql` into a new SQL Editor tab and press **Run** (once). Until then the Saved list stays empty.
 
 ## Step 4d: Cody out, Kai in
 Paste `supabase/004_replace_cody_with_kai.sql` and press **Run** (once). Then create Kai's login (step 3) and link it (step 4). Cody's old login stops working the moment 004 runs; you can also delete his user under Authentication → Users.
@@ -67,7 +67,7 @@ Paste `supabase/006_appointments.sql` and press **Run** (once). Until then appoi
 Paste `supabase/007_appointment_outcomes.sql` and press **Run** (once). Until then the outcome buttons show but changes won't save for the team.
 
 ## Step 4h: My fit (each rep's own turf map)
-Paste `supabase/008_rep_results.sql` and press **Run** (once). It adds one read-only view, `rep_tract_results`: per rep, per tract, the houses they knocked, their last knock, and the appointments they booked there with how far each got. Nothing new is stored. Until it's run, the 🎯 My fit option stays hidden.
+Paste `supabase/008_rep_results.sql` and press **Run** (once). It adds one read-only view, `rep_tract_results`: per rep, per tract, the houses they knocked, their last knock, and the appointments they booked there with how far each got. Nothing new is stored. Until it's run, the My fit option stays hidden.
 
 ## Step 4i: Issac out, Ash in
 1. Paste `supabase/009_replace_issac_with_ash.sql` and press **Run** (once). It locks Issac's login right away, **deletes everything he entered** (knocks, house and area notes, pins, tags, saved turfs, appointments and their outcomes, and outcome updates he made on teammates' appointments) and releases every area he last changed back to **Open** (stamped by Gio) so anyone can claim or save it. This can't be undone. The result shows Issac `active = false` and Ash `active = true`.
@@ -96,9 +96,9 @@ Heads-up: the home-screen app and Safari keep separate logins. Sign in inside th
 ## Day to day
 - **Pick turf:** tap a tract → **Claim**. The map outlines it in your color with your name (Ash purple, Matt teal, Kai pink, Gio brown). **Finished** makes it dashed; **Avoid** makes it dark dotted; **Open** releases it. Any rep can change any area. "Undo last area change" takes back your own.
 - **Knock:** open the walk list → tap a house → pick a status. "Come back" asks when. The black bar has **Undo** for 6 seconds; later use "Undo last knock" in the house's sheet.
-- **Appointments:** tap **Booked** on a house and the app asks to pin the appointment (time and a note are optional; **Skip** is one tap). Or use the pin button → **📅 Appointment** to drop one anywhere. Everyone sees 📅 pins in the booking rep's color; tract cards count them; **My stuff** lists upcoming ones and **Where the team books most**; Target → Color the map by → **📅 Appointments** shows the hot spots. No homeowner names or phone numbers in the note.
-- **After an appointment:** tap its 📅 pin (or tap it in **My stuff**) and tap what happened: **Sat**, **Closed**, **Delayed** (pick the new time), **Canceled** or **Installed**. Add an optional note. Every change is stamped with your name, kept in the appointment's **History**, and can be undone. Past appointments with no outcome show under **⚠️ Appointments that need an update** and as ⚠️ on your name button. **Team results** in My stuff shows the close rate.
-- **Find an address:** tap 🔍 (top right of the map), type the house number and street (add the town if it's common), tap Search. The map flies there, opens that tract's card, and **Find this house in the walk list** jumps to the house.
+- **Appointments:** tap **Booked** on a house and the app asks to pin the appointment (time and a note are optional; **Skip** is one tap). Or use the pin button → **Appointment** to drop one anywhere. Appointment pins are rounded squares in the outcome's color, ringed in the booking rep's color. By default you see **your own** appointments (pins, tract card counts, **My stuff** lists, **My results**, **Where I book most**); switch **Mine / Team** in My stuff or in Target → "Appointments shown" to see the whole team's. Target → Color the map by → **Appointments** shows the hot spots. No homeowner names or phone numbers in the note.
+- **After an appointment:** tap its pin (or tap it in **My stuff**) and tap what happened: **Sat**, **Closed**, **Delayed** (pick the new time), **Canceled** or **Installed**. Add an optional note. Every change is stamped with your name, kept in the appointment's **History**, and can be undone. Past appointments with no outcome show under **My appointments that need an update** and as "N need update" on your name button. **My results** (or **Team results**) in My stuff shows the close rate.
+- **Find an address:** tap the magnifier (top right of the map), type the house number and street (add the town if it's common), tap Search. The map flies there, opens that tract's card, and **Find this house in the walk list** jumps to the house.
 - **Area tags:** on a tract card, tap a suggestion ("+ Lots of dogs") or type your own (40 characters, no names or numbers). Everyone sees them with your name; × removes your own.
 - **Notes:** in a house's sheet (house notes), on a tract card (area notes), or tap the **pin** button (top right, under locate) to drop a pin at your location or anywhere you tap. Everyone sees them right away.
 - **My stuff:** tap your name, top right. It shows your claimed turf, your come-backs and interested houses (tap to jump there) and the team's numbers today. The **Mine** button shows only your turf on the map.

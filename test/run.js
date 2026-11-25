@@ -243,6 +243,16 @@ t('Financing-ready: small tracts lean on the county; levels split the turf; not 
   assert.ok(cfg.bands.every((b) => cfg.levels.some((l) => l.key === b.level)), 'every filter band points at a real level');
   assert.ok(!('financing' in readCfg('scoring.json').weights), 'Financing-ready is a filter, never part of the TurfScore');
 });
+t('no emojis in the app or its settings (Giovani asked for none)', () => {
+  const emoji = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{25B2}\u{25BC}\u{2605}\u{2606}\u{2713}]/u;
+  const files = [...fs.readdirSync(path.join(ROOT, 'm3-map')).filter((f) => /\.(html|js)$/.test(f)).map((f) => path.join('m3-map', f)),
+    ...fs.readdirSync(path.join(ROOT, 'config')).filter((f) => f.endsWith('.json')).map((f) => path.join('config', f))];
+  for (const f of files) {
+    const lines = fs.readFileSync(path.join(ROOT, f), 'utf8').split('\n');
+    const i = lines.findIndex((l) => emoji.test(l));
+    assert.equal(i, -1, `${f}:${i + 1} has an emoji`);
+  }
+});
 t('PLUTO bct2020 → GEOID', () => {
   assert.equal(plutoTractGeoid('4012300'), '36081012300');
   assert.equal(plutoTractGeoid('4000100.0'), '36081000100');
@@ -868,6 +878,26 @@ await at('appointments: pinned for the team with time and note, no phone numbers
   await gio.deleteAppt(gio.appts()[0].client_id);                                 // admin can remove anyone's
   await matt.loadTeam();
   assert.equal(matt.appts().length, 1);
+});
+await at('my appointments: only the ones I booked (sent or not); none when signed out', async () => {
+  const sb = makeTeam();
+  const gio = app(sb, memoryStorage()); await gio.signIn('gio@x.com', 'pw-gio');
+  gio.addAppt({ tract: TR, lat: 40.688, lon: -73.806, appt_at: new Date(clock + 86400000).toISOString() });
+  await gio.flush();
+  const matt = app(sb, memoryStorage());
+  assert.equal(matt.myAppts().length, 0);                                           // signed out
+  await matt.signIn('matt@x.com', 'pw-matt');
+  matt.addAppt({ tract: TR, lat: 40.6871, lon: -73.8072, appt_at: new Date(clock + 2 * 86400000).toISOString() });
+  await matt.flush();
+  await matt.loadTeam();
+  assert.equal(matt.appts().length, 2);                                             // the team view still has everyone's
+  assert.equal(matt.myAppts().length, 1);
+  assert.equal(matt.myAppts()[0].rep, 'Matt');
+  sb.state.offline = true;
+  matt.addAppt({ tract: TR, lat: 40.6872, lon: -73.8073, appt_at: new Date(clock + 3 * 86400000).toISOString() });   // not sent yet
+  assert.equal(matt.myAppts().length, 2);
+  assert.ok(matt.myAppts().some((a) => a.pending), 'an unsent one is still mine');
+  sb.state.offline = false;
 });
 await at('appointment outcomes: anyone updates, newest wins, delay moves the time, undo own, history, offline', async () => {
   const sb = makeTeam();

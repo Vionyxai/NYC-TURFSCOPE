@@ -464,6 +464,7 @@
       signIn, signOut, loadMe, flush,
       record, undo, setTurf, undoTurf, addNote, deleteNote, addTag, deleteTag, tagsFor, addAppt, deleteAppt, setApptStatus, undoApptStatus, apptHistory,
       appts: allAppts, apptsIn: (tract) => allAppts().filter((a) => a.tract === String(tract)),
+      myAppts: () => allAppts().filter((a) => !!me && a.rep === me.name),   // the default view: only the appointments I booked
       loadTract, loadTeam, tractProgress, repStats, myFollowups, loadRepResults,
       repResults: () => results,
       saveTurf, unsaveTurf, loadSaved, turfStage,

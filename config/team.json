@@ -111,14 +111,12 @@
     {
       "key": "scheduled",
       "label": "Scheduled",
-      "icon": "📅",
       "color": "#2563eb",
       "open": true
     },
     {
       "key": "sat",
       "label": "Sat",
-      "icon": "🪑",
       "color": "#7c3aed",
       "open": true,
       "hint": "Met the homeowner"
@@ -126,7 +124,6 @@
     {
       "key": "closed",
       "label": "Closed",
-      "icon": "🤝",
       "color": "#16a34a",
       "open": false,
       "hint": "Signed / sold"
@@ -134,7 +131,6 @@
     {
       "key": "delayed",
       "label": "Delayed",
-      "icon": "⏳",
       "color": "#d97706",
       "open": true,
       "hint": "Moved to a new time"
@@ -142,14 +138,12 @@
     {
       "key": "canceled",
       "label": "Canceled",
-      "icon": "✖️",
       "color": "#6b7280",
       "open": false
     },
     {
       "key": "installed",
       "label": "Installed",
-      "icon": "🔧",
       "color": "#0f766e",
       "open": false,
       "hint": "Heat pump is in"
