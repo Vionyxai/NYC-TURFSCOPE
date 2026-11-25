@@ -20,9 +20,8 @@ update reps set email = 'matt@x.com'  where name = 'Matt';
 update reps set email = 'gio@x.com'   where name = 'Gio';
 
 do $$ begin
-  assert (select count(*) from reps) = 6, 'four seeded + Kai + Ash';
+  assert (select count(*) from reps) = 5, 'three seeded + Kai + Ash';
   assert (select string_agg(name, ',' order by id) from reps where active) = 'Matt,Gio,Kai,Ash', 'active reps after 004 and 009';
-  assert (select not active from reps where name = 'Issac'), 'Issac deactivated, row kept so his login stays locked out';
   assert (select not active from reps where name = 'Cody'), 'Cody deactivated, row kept for history';
   assert (select name from reps where is_admin) = 'Gio', 'Gio is the only admin';
 end $$;
@@ -47,7 +46,7 @@ insert into knocks (client_id,bbl,tract,status,knocked_at) values ('11111111-111
 insert into knocks (client_id,bbl,tract,status,followup) values ('22222222-2222-2222-2222-222222222222','4012345678','36081019400','come_back','after_5pm');
 insert into knocks (client_id,bbl,tract,status) values (gen_random_uuid(),'4012345679','36081019400','booked');
 insert into knocks (client_id,bbl,tract,status) values ('22222222-2222-2222-2222-222222222222','4012345678','36081019400','come_back') on conflict (client_id) do nothing;
-select pg_temp.fails($q$insert into knocks (client_id,bbl,tract,status,rep_id) values (gen_random_uuid(),'4012345680','36081019400','booked',1)$q$, 'knock as someone else');
+select pg_temp.fails($q$insert into knocks (client_id,bbl,tract,status,rep_id) values (gen_random_uuid(),'4012345680','36081019400','booked',(select id from reps where name = 'Gio'))$q$, 'knock as someone else');
 select pg_temp.fails($q$insert into knocks (client_id,bbl,tract,status) values (gen_random_uuid(),'4012345680','36081019400','maybe')$q$, 'bad status');
 select pg_temp.fails($q$insert into knocks (client_id,bbl,tract,status,followup) values (gen_random_uuid(),'4012345680','36081019400','come_back','call me at 555')$q$, 'free-text followup');
 select pg_temp.fails($q$insert into knocks (client_id,bbl,tract,status) values (gen_random_uuid(),'12','36081019400','booked')$q$, 'bad bbl');
@@ -290,50 +289,6 @@ set role anon;
 select pg_temp.fails('select 1 from rep_tract_results', 'anon read rep results');
 reset role;
 
--- 009: Issac leaves. Bring him back for a moment, let him enter one of everything, run 009 again
--- (it's safe to run twice) and check it's all gone and his areas are released.
-update reps set active = true, email = 'issac@x.com' where name = 'Issac';
-select pg_temp.as_user('matt@x.com');
-insert into turf_log (client_id,tract,status,set_at) values (gen_random_uuid(),'36081000100','claimed', now() - interval '2 hours'), (gen_random_uuid(),'36081000400','claimed', now() - interval '2 hours');   -- Matt's, before Issac changes them
-insert into appointments (client_id, tract, lat, lon) values ('9a9a9a9a-0000-0000-0000-000000000001','36081000100',40.70,-73.80);
-insert into appointment_updates (client_id, appt, status, set_at) values (gen_random_uuid(),'9a9a9a9a-0000-0000-0000-000000000001','sat', now() - interval '1 hour');
-reset role;
-select pg_temp.as_user('issac@x.com');
-insert into turf_log (client_id,tract,status) values (gen_random_uuid(),'36081000100','finished'), (gen_random_uuid(),'36081000200','claimed'), (gen_random_uuid(),'36081000300','avoid');
-insert into turf_log (client_id,tract,status,set_at) values (gen_random_uuid(),'36081000400','open', now() + interval '1 minute');   -- releases Matt's claim (below)
-insert into knocks (client_id,bbl,tract,status) values (gen_random_uuid(),'4000100001','36081000200','booked');
-insert into notes (client_id,tract,body) values (gen_random_uuid(),'36081000200','Area note from Issac');
-insert into notes (client_id,lat,lon,body) values (gen_random_uuid(),40.71,-73.81,'Pin from Issac');
-insert into area_tags (client_id, tract, label) values (gen_random_uuid(), '36081000200', 'Issac tag');
-insert into saved_turfs (client_id,tract) values (gen_random_uuid(),'36081000200');
-insert into appointments (client_id, tract, lat, lon) values ('9b9b9b9b-0000-0000-0000-000000000001','36081000200',40.70,-73.80);
-insert into appointment_updates (client_id, appt, status) values (gen_random_uuid(),'9a9a9a9a-0000-0000-0000-000000000001','closed');   -- on Matt's appointment
-reset role;
-select pg_temp.as_user('matt@x.com');
-insert into appointment_updates (client_id, appt, status) values (gen_random_uuid(),'9b9b9b9b-0000-0000-0000-000000000001','sat');      -- Matt's update on Issac's appointment
-reset role;
-do $$ begin
-  assert (select count(*) from team_appointments where client_id = '9a9a9a9a-0000-0000-0000-000000000001' and status = 'closed') = 1, 'seed: Issac closed Matt''s appointment';
-  assert (select count(*) from turf_log where rep_id = (select id from reps where name = 'Issac')) = 4, 'seed: Issac set 4 areas';
-end $$;
-\i supabase/009_replace_issac_with_ash.sql
-do $$
-declare iss smallint := (select id from reps where name = 'Issac');
-begin
-  assert (select count(*) from knocks where rep_id = iss) + (select count(*) from notes where rep_id = iss) + (select count(*) from area_tags where rep_id = iss)
-       + (select count(*) from saved_turfs where rep_id = iss) + (select count(*) from appointments where rep_id = iss)
-       + (select count(*) from appointment_updates where rep_id = iss) + (select count(*) from turf_log where rep_id = iss) = 0, 'nothing of Issac''s left';
-  assert (select string_agg(tract || ':' || status || ':' || rep, ',' order by tract) from turf_status where tract in ('36081000100','36081000200','36081000300','36081000400'))
-       = '36081000100:open:Gio,36081000200:open:Gio,36081000300:open:Gio,36081000400:open:Gio', 'his areas released to Open (not back to a claim he had finished or released)';
-  assert (select count(*) from appointment_updates where appt = '9b9b9b9b-0000-0000-0000-000000000001') = 0, 'his appointment''s outcomes went with it';
-  assert (select status from team_appointments where client_id = '9a9a9a9a-0000-0000-0000-000000000001') = 'sat', 'Matt''s appointment back to Matt''s own outcome';
-  assert (select count(*) from turf_log where rep_id = (select id from reps where name = 'Matt') and tract in ('36081000100','36081000400')) = 2, 'Matt''s own rows untouched';
-  assert (select not active from reps where name = 'Issac') and (select active from reps where name = 'Ash'), 'Issac out, Ash in';
-end $$;
-select pg_temp.as_user('issac@x.com');
-do $$ begin assert (select count(*) from knocks) = 0, 'Issac locked out'; end $$;
-reset role;
-
 -- Someone leaves the team
 update reps set active = false where name = 'Matt';
 select pg_temp.as_user('matt@x.com');
@@ -341,4 +296,4 @@ do $$ begin assert (select count(*) from knocks) = 0, 'inactive rep locked out';
 reset role;
 
 \o
-\echo RLS tests passed: 4 active reps (Cody out, Kai in, Issac out and his entries removed, Ash in); logged-out/stranger blocked; knocks, turf and notes posted only as yourself; anyone can change any status; no edits; retries safe; undo own; admin override; no phone/email in notes or tags; area tags, appointments and their outcomes shared; per-rep results; inactive locked out
+\echo RLS tests passed: 4 active reps (Cody out, Kai in, Ash in); logged-out/stranger blocked; knocks, turf and notes posted only as yourself; anyone can change any status; no edits; retries safe; undo own; admin override; no phone/email in notes or tags; area tags, appointments and their outcomes shared; per-rep results; inactive locked out

@@ -4,7 +4,7 @@ About 15 minutes, all in the browser. You only do this once.
 
 ## How it's set up (plain version)
 
-- **`reps`:** one row per rep: Matt, Gio (the admin), Kai and Ash. Cody left the team (his row stays, inactive, so his history keeps his name). Issac left too: his row stays inactive (so his login is locked out) but everything he entered was removed (009). Each row gets that rep's login email, and that's how a login becomes "Matt".
+- **`reps`:** one row per rep: Matt, Gio (the admin), Kai and Ash. Cody left the team (his row stays, inactive, so his history keeps his name). Each row gets that rep's login email, and that's how a login becomes "Matt".
 - **`knocks`:** every tap on a door (house status), stamped with the rep who made it.
 - **`turf_log`:** every change to an area's status: **Claimed / Finished / Avoid / Open**, stamped with the rep. This is how you see who picked which turf.
 - **`notes`:** team notes, on a **house**, on a **whole tract (area)**, or as a **pin** dropped on the map.
@@ -27,7 +27,7 @@ All of this is in [`001_team_tracking.sql`](001_team_tracking.sql) and tested by
 ## Step 2: build the tables and security rules
 1. Left menu → **SQL Editor** → **New query**.
 2. Paste the **entire** contents of `supabase/001_team_tracking.sql` and press **Run**. You should see "Success. No rows returned."
-3. Left menu → **Table Editor**. You should see `reps` with Issac, Matt, Cody and Gio.
+3. Left menu → **Table Editor**. You should see `reps` with Matt, Cody and Gio.
 
 ## Step 3: lock down sign-ups and create the 4 logins
 1. **Authentication → Sign In / Providers → Email:** turn **off** "Allow new users to sign up". Only you create accounts. (Even if a stranger got an account, the RLS rules would show them nothing. This is a second lock.)
@@ -69,11 +69,8 @@ Paste `supabase/007_appointment_outcomes.sql` and press **Run** (once). Until th
 ## Step 4h: My fit (each rep's own turf map)
 Paste `supabase/008_rep_results.sql` and press **Run** (once). It adds one read-only view, `rep_tract_results`: per rep, per tract, the houses they knocked, their last knock, and the appointments they booked there with how far each got. Nothing new is stored. Until it's run, the My fit option stays hidden.
 
-## Step 4i: Issac out, Ash in
-1. Paste `supabase/009_replace_issac_with_ash.sql` and press **Run** (once). It locks Issac's login right away, **deletes everything he entered** (knocks, house and area notes, pins, tags, saved turfs, appointments and their outcomes, and outcome updates he made on teammates' appointments) and releases every area he last changed back to **Open** (stamped by Gio) so anyone can claim or save it. This can't be undone. The result shows Issac `active = false` and Ash `active = true`.
-2. **Authentication → Users → Add user → Create new user:** Ash's email and a password, with **Auto Confirm User** checked.
-3. SQL Editor: `update public.reps set email = 'ASH_EMAIL_HERE' where name = 'Ash';` (put in Ash's real email).
-4. Optional: delete Issac's user under Authentication → Users. His login already does nothing after step 1.
+## Step 4i: Ash joins
+Paste `supabase/009_add_ash.sql` and press **Run** (once). Then create Ash's login (step 3) and link the email (step 4).
 
 ## Step 4j: two more appointment outcomes
 Paste `supabase/010_more_outcomes.sql` and press **Run** (once). It adds **Sat, didn't sign** and **Credit fail** to the outcomes a rep can pick, and counts both as sits in the My fit results. Nothing is deleted. Until it's run, tapping either of those two buttons won't save.

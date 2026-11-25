@@ -183,7 +183,7 @@ t('My fit: each rep learns which turf works for them; small samples stay put; ne
   const rows = [
     { rep: 'Matt', tract: 'OLD1', doors: 300, appts: 24, closed: 8 }, { rep: 'Matt', tract: 'NEW1', doors: 300, appts: 6, closed: 2 },
     { rep: 'Kai', tract: 'OLD2', doors: 300, appts: 5, closed: 1 }, { rep: 'Kai', tract: 'NEW2', doors: 300, appts: 21, closed: 7 },
-    { rep: 'Issac', tract: 'OLD1', doors: 40, appts: 2, closed: 0 },
+    { rep: 'Ash', tract: 'OLD1', doors: 40, appts: 2, closed: 0 },
     { rep: 'Gio', tract: 'OLD1', doors: 400, appts: 16, closed: 4 }, { rep: 'Gio', tract: 'NEW1', doors: 6, appts: 3, closed: 0 },   // 3 lucky appointments in 6 doors
   ];
   const { team, reps } = buildProfiles(rows, (g) => tracts[g], cfg);
@@ -195,8 +195,8 @@ t('My fit: each rep learns which turf works for them; small samples stay put; ne
   assert.ok(M['home_age_band:pre1940'].lift > 1.1 && M['home_age_band:2000p'].lift < 0.9, 'blend still favors old homes (his close rate is the same in both)');
   assert.equal(fm(old, 'Matt').reasons[0].group, 'home_age_band');                         // the tract card can say why
   assert.ok(Math.abs(reps.Gio.lift['home_age_band:2000p'].liftA - 1) < 0.25, '3 lucky appointments in 6 doors barely move it');
-  assert.equal(reps.Issac.learning, true); assert.equal(reps.Issac.remaining, cfg.min_doors - 40);
-  assert.equal(fm(old, 'Issac').score, fit(old, null, team, cfg).score, 'a learning rep sees the team pattern');
+  assert.equal(reps.Ash.learning, true); assert.equal(reps.Ash.remaining, cfg.min_doors - 40);
+  assert.equal(fm(old, 'Ash').score, fit(old, null, team, cfg).score, 'a learning rep sees the team pattern');
   for (const r of Object.keys(reps)) for (const p of [old, neu, { ...old, score: 99 }, { ...neu, score: 1 }]) { const x = fm(p, r).score; assert.ok(x >= 0 && x <= 100); }
   const top = [85, 92].map((s) => fm({ ...old, score: s }, 'Matt').score);
   assert.ok(top[0] < top[1] && top[1] < 100, 'great tracts still rank apart instead of all reading 100');
@@ -675,7 +675,6 @@ const team = readCfg('team.json');
 const makeTeam = () => fakeSupabase({
   users: { 'gio@x.com': 'pw-gio', 'matt@x.com': 'pw-matt', 'stranger@x.com': 'pw-s' },
   reps: [
-    { id: 1, name: 'Issac', email: 'issac@x.com', is_admin: false, active: false },   // left the team (009)
     { id: 2, name: 'Matt', email: 'matt@x.com', is_admin: false },
     { id: 3, name: 'Cody', email: 'cody@x.com', is_admin: false, active: false },   // left the team
     { id: 4, name: 'Gio', email: 'Gio@x.com', is_admin: true },

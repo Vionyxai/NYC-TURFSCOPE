@@ -33,8 +33,8 @@ create table public.reps (
   created_at timestamptz not null default now()
 );
 
--- The four-man team (same list as config/team.json).
-insert into public.reps (name, is_admin) values ('Issac', false), ('Matt', false), ('Cody', false), ('Gio', true);
+-- The starting team (later files add and retire reps; config/team.json has the current list).
+insert into public.reps (name, is_admin) values ('Matt', false), ('Cody', false), ('Gio', true);
 
 -- Who is calling? Matches the logged-in email to an active rep. Returns null for anyone else.
 create or replace function public.my_rep_id() returns smallint
